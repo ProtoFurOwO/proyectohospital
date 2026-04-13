@@ -1,0 +1,26 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Go / build outputs
+*.out
+*.exe
+
+# Logs and local files
+*.log
+Thumbs.db
+.DS_Store
+
+# Documentation (keep only main README)
+*.md
+!Readme.md
+!README.md

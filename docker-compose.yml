@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # MySQL - Servicio de Citas (Puerto 8001)
+  db-citas:
+    image: mysql:8
+    container_name: hospital-mysql-citas
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: citas
+      MYSQL_USER: hospital
+      MYSQL_PASSWORD: hospital123
+    volumes:
+      - mysql_citas_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL - Servicio de Expedientes (Puerto 8002)
+  db-expedientes:
+    image: postgres:15
+    container_name: hospital-postgres-expedientes
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: hospital
+      POSTGRES_PASSWORD: hospital123
+      POSTGRES_DB: expedientes
+    volumes:
+      - postgres_expedientes_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospital -d expedientes"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MariaDB - Servicio de Quirofanos (Puerto 8003)
+  db-quirofanos:
+    image: mariadb:10
+    container_name: hospital-mariadb-quirofanos
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: quirofanos
+      MARIADB_USER: hospital
+      MARIADB_PASSWORD: hospital123
+    volumes:
+      - mariadb_quirofanos_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB - Servicio de Insumos (Puerto 8004)
+  db-insumos:
+    image: mongo:6
+    container_name: hospital-mongo-insumos
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: hospital
+      MONGO_INITDB_ROOT_PASSWORD: hospital123
+      MONGO_INITDB_DATABASE: insumos
+    volumes:
+      - mongo_insumos_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Servicio de Personal (Puerto 8005)
+  db-personal:
+    image: redis:7
+    container_name: hospital-redis-personal
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass hospital123
+    volumes:
+      - redis_personal_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "hospital123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_citas_data:
+  postgres_expedientes_data:
+  mariadb_quirofanos_data:
+  mongo_insumos_data:
+  redis_personal_data:
