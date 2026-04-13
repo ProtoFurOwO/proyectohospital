@@ -7,6 +7,7 @@ function Horarios() {
   const [citas, setCitas] = useState([])
   const [medicos, setMedicos] = useState([])
   const [turnoActual, setTurnoActual] = useState('manana')
+  const [fechaSeleccionada, setFechaSeleccionada] = useState(() => new Date().toISOString().slice(0, 10))
   const [loading, setLoading] = useState(true)
 
   const TURNOS = {
@@ -23,19 +24,50 @@ function Horarios() {
     fetchData()
     const interval = setInterval(fetchData, 10000)
     return () => clearInterval(interval)
-  }, [turnoActual])
+  }, [turnoActual, fechaSeleccionada])
+
+  const extraerFecha = (fechaValor) => {
+    if (!fechaValor) return ''
+    if (typeof fechaValor === 'string') return fechaValor.slice(0, 10)
+    return new Date(fechaValor).toISOString().slice(0, 10)
+  }
+
+  const mapearProgramacionPortal = (item) => ({
+    id: item.id,
+    paciente_nombre: 'Bloque reservado (Portal)',
+    medico_id: item.medico_id,
+    medico_nombre: item.medico_nombre || 'Doctor sin nombre',
+    quirofano_id: item.quirofano_id,
+    fecha_cita: item.fecha_cita,
+    tipo_cirugia: item.especialidad || 'General',
+    estado: 'programada',
+    es_urgencia: false,
+    turno: item.turno,
+    source: 'portal',
+    estado_portal: item.estado,
+    motivo_portal: item.motivo
+  })
 
   const fetchData = async () => {
     try {
-      const [citasRes, medicosRes] = await Promise.all([
+      const [citasRes, medicosRes, portalRes] = await Promise.all([
         fetch(`${API_CITAS}/citas?turno=${turnoActual}`),
-        fetch(`${API_PERSONAL}/personal/medicos?turno=${turnoActual}`)
+        fetch(`${API_PERSONAL}/personal/medicos?turno=${turnoActual}`),
+        fetch(`${API_PERSONAL}/personal/portal/programaciones?turno=${turnoActual}&fecha=${fechaSeleccionada}`)
       ])
 
-      if (citasRes.ok && medicosRes.ok) {
+      if (citasRes.ok && medicosRes.ok && portalRes.ok) {
         const citasData = await citasRes.json()
         const medicosData = await medicosRes.json()
-        setCitas(citasData)
+        const portalData = await portalRes.json()
+
+        const citasDelDia = citasData.filter((cita) => (
+          cita.estado === 'programada' && extraerFecha(cita.fecha_cita) === fechaSeleccionada
+        ))
+
+        const citasPortal = (portalData.programaciones || []).map(mapearProgramacionPortal)
+
+        setCitas([...citasDelDia, ...citasPortal])
         setMedicos(medicosData)
       }
     } catch (error) {
@@ -69,6 +101,25 @@ function Horarios() {
         <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>
           📅 Gestión de Horarios y Turnos
         </h2>
+
+        <div style={{ marginBottom: '1rem', maxWidth: '280px' }}>
+          <label style={{ display: 'block', fontSize: '0.85rem', color: '#888', marginBottom: '0.35rem' }}>
+            Fecha a visualizar
+          </label>
+          <input
+            type="date"
+            value={fechaSeleccionada}
+            onChange={(e) => setFechaSeleccionada(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.65rem',
+              background: '#0f3460',
+              border: '1px solid #3742fa',
+              borderRadius: '6px',
+              color: '#fff'
+            }}
+          />
+        </div>
 
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           {Object.entries(TURNOS).map(([key, turno]) => (
@@ -253,6 +304,9 @@ function Horarios() {
                           </div>
                           <div style={{ color: '#888', fontSize: '0.85rem' }}>
                             {cita.tipo_cirugia} - Dr. {cita.medico_nombre}
+                          </div>
+                          <div style={{ color: cita.source === 'portal' ? '#ffa502' : '#9aa', fontSize: '0.75rem' }}>
+                            {cita.source === 'portal' ? `Portal doctor (${cita.estado_portal})` : 'Cita servicio'}
                           </div>
                         </div>
                         <div style={{

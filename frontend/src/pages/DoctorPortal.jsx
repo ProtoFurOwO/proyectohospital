@@ -15,6 +15,7 @@ function DoctorPortal() {
   const [historial, setHistorial] = useState([])
   const [disponibilidad, setDisponibilidad] = useState(null)
   const [turnoDeseado, setTurnoDeseado] = useState('manana')
+  const [fechaDeseada, setFechaDeseada] = useState(() => new Date().toISOString().slice(0, 10))
   const [quirofanoId, setQuirofanoId] = useState('')
   const [resultado, setResultado] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -108,6 +109,7 @@ function DoctorPortal() {
         body: JSON.stringify({
           medico_id: Number(medicoId),
           turno_deseado: turnoDeseado,
+          fecha_deseada: fechaDeseada,
           quirofano_id: quirofanoId ? Number(quirofanoId) : null
         })
       })
@@ -132,6 +134,8 @@ function DoctorPortal() {
 
   const getEstadoBadgeColor = (estado) => {
     if (estado === 'asignado_directo') return '#00ff88'
+    if (estado === 'ajustado_jineteo') return '#ffa502'
+    if (estado === 'reprogramado_jineteo') return '#ffa502'
     if (estado === 'reasignado_jineteo') return '#ffa502'
     if (estado === 'rechazado') return '#ff4757'
     return '#666'
@@ -145,7 +149,7 @@ function DoctorPortal() {
     <div>
       <h2 style={{ marginBottom: '0.75rem', fontSize: '1.5rem' }}>Portal de Doctores</h2>
       <p style={{ color: '#888', marginBottom: '1.25rem' }}>
-        El doctor solicita su turno. Si no tiene disponibilidad, el sistema reasigna automaticamente por jineteo.
+        El doctor solicita su turno. Si no hay cupo ese dia, el sistema lo reprograma para otro dia, pero siempre con el mismo doctor.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1rem' }}>
@@ -189,7 +193,7 @@ function DoctorPortal() {
         <section style={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: '10px', padding: '1rem' }}>
           <h3 style={{ color: '#3742fa', marginBottom: '0.75rem' }}>Solicitar turno</h3>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.3rem' }}>Turno deseado</label>
               <select
@@ -208,6 +212,23 @@ function DoctorPortal() {
                   <option key={turno.key} value={turno.key}>{turno.nombre}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#888', marginBottom: '0.3rem' }}>Fecha deseada</label>
+              <input
+                type="date"
+                value={fechaDeseada}
+                onChange={(e) => setFechaDeseada(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem',
+                  background: '#0f3460',
+                  border: '1px solid #3742fa',
+                  borderRadius: '6px',
+                  color: '#fff'
+                }}
+              />
             </div>
 
             <div>
@@ -234,7 +255,7 @@ function DoctorPortal() {
               className="btn btn-success"
               onClick={solicitarTurno}
               disabled={enviando || !medicoId}
-              style={{ height: '39px', fontWeight: '700' }}
+              style={{ height: '39px', fontWeight: '700', width: '100%' }}
             >
               {enviando ? 'Enviando...' : 'Solicitar'}
             </button>
@@ -257,6 +278,21 @@ function DoctorPortal() {
               {resultado.medico_asignado && (
                 <div style={{ marginTop: '0.45rem', fontSize: '0.9rem', color: '#9fb3ff' }}>
                   Asignado: {resultado.medico_asignado.nombre} ({resultado.medico_asignado.especialidad})
+                </div>
+              )}
+              {resultado.fecha_solicitada && (
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                  Fecha solicitada: {resultado.fecha_solicitada}
+                </div>
+              )}
+              {resultado.fecha_asignada && (
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                  Fecha asignada: {resultado.fecha_asignada}
+                </div>
+              )}
+              {resultado.turno_final && (
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                  Turno final aplicado: {resultado.turno_final}
                 </div>
               )}
             </div>
@@ -304,6 +340,9 @@ function DoctorPortal() {
                   </span>
                 </div>
                 <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Turno solicitado: {item.turno_solicitado}</div>
+                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Turno final: {item.turno_final || item.turno_solicitado}</div>
+                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Fecha solicitada: {item.fecha_solicitada || 'N/A'}</div>
+                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Fecha asignada: {item.fecha_asignada || 'Pendiente'}</div>
                 <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Asignado: {item.medico_asignado_nombre || 'Ninguno'}</div>
                 <div style={{ color: '#8b96ae', fontSize: '0.8rem', marginTop: '0.2rem' }}>{item.motivo}</div>
               </div>
