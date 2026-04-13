@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 
 app = FastAPI(
     title="Servicio de Personal Medico",
@@ -48,6 +48,25 @@ class AsignacionRequest(BaseModel):
     medico_id: int
     quirofano_id: int
 
+class SolicitudTurnoRequest(BaseModel):
+    medico_id: int
+    turno_deseado: str
+    quirofano_id: Optional[int] = None
+    notas: Optional[str] = None
+
+class SolicitudTurno(BaseModel):
+    id: int
+    fecha_solicitud: str
+    medico_solicitante_id: int
+    medico_solicitante_nombre: str
+    turno_solicitado: str
+    estado: str
+    motivo: str
+    especialidad: str
+    medico_asignado_id: Optional[int] = None
+    medico_asignado_nombre: Optional[str] = None
+    quirofano_id: Optional[int] = None
+
 # Datos
 ESPECIALIDADES = [
     "Cardiologia", "Oftalmologia", "Traumatologia",
@@ -58,6 +77,8 @@ TURNOS = ["manana", "tarde", "noche"]
 
 medicos_db: List[Medico] = []
 personal_apoyo_db: List[PersonalApoyo] = []
+solicitudes_turno_db: List[SolicitudTurno] = []
+solicitud_turno_id_seq = 1
 fecha_actual = str(date.today())
 
 # Generar 60 medicos
@@ -101,6 +122,73 @@ for i in range(1, 31):
         disponible=True
     ))
 
+def find_medico_by_id(medico_id: int) -> Optional[Medico]:
+    for medico in medicos_db:
+        if medico.id == medico_id:
+            return medico
+    return None
+
+def medico_disponible_en_turno(medico: Medico, turno: str) -> bool:
+    return (
+        medico.turno == turno and
+        medico.disponible and
+        medico.operaciones_hoy < medico.max_operaciones
+    )
+
+def aplicar_operacion_a_medico(medico: Medico):
+    medico.operaciones_hoy += 1
+    medico.ultima_operacion = fecha_actual
+    medico.dias_sin_operar = 0
+
+    if medico.operaciones_hoy >= medico.max_operaciones:
+        medico.disponible = False
+
+def candidatos_jineteo(turno: str, especialidad: Optional[str], excluir_medico_id: Optional[int] = None) -> List[Medico]:
+    candidatos = [
+        m for m in medicos_db
+        if m.turno == turno and m.disponible and m.operaciones_hoy < m.max_operaciones
+    ]
+
+    if excluir_medico_id is not None:
+        candidatos = [m for m in candidatos if m.id != excluir_medico_id]
+
+    # Preferir la misma especialidad cuando exista disponibilidad.
+    if especialidad:
+        mismos = [m for m in candidatos if m.especialidad == especialidad]
+        if mismos:
+            candidatos = mismos
+
+    candidatos.sort(key=lambda m: (-m.dias_sin_operar, m.operaciones_hoy, m.id))
+    return candidatos
+
+def registrar_solicitud_turno(
+    medico_solicitante: Medico,
+    turno_solicitado: str,
+    estado: str,
+    motivo: str,
+    medico_asignado: Optional[Medico],
+    quirofano_id: Optional[int]
+) -> SolicitudTurno:
+    global solicitud_turno_id_seq
+
+    solicitud = SolicitudTurno(
+        id=solicitud_turno_id_seq,
+        fecha_solicitud=datetime.now().isoformat(),
+        medico_solicitante_id=medico_solicitante.id,
+        medico_solicitante_nombre=medico_solicitante.nombre,
+        turno_solicitado=turno_solicitado,
+        estado=estado,
+        motivo=motivo,
+        especialidad=medico_solicitante.especialidad,
+        medico_asignado_id=medico_asignado.id if medico_asignado else None,
+        medico_asignado_nombre=medico_asignado.nombre if medico_asignado else None,
+        quirofano_id=quirofano_id
+    )
+
+    solicitud_turno_id_seq += 1
+    solicitudes_turno_db.append(solicitud)
+    return solicitud
+
 @app.get("/health")
 async def health():
     return {
@@ -133,10 +221,156 @@ async def get_medicos(
 @app.get("/personal/medicos/{medico_id}", response_model=Medico)
 async def get_medico(medico_id: int):
     """Obtiene un medico por ID"""
-    for medico in medicos_db:
-        if medico.id == medico_id:
-            return medico
+    medico = find_medico_by_id(medico_id)
+    if medico:
+        return medico
     raise HTTPException(status_code=404, detail="Medico no encontrado")
+
+@app.get("/personal/portal/disponibilidad-turnos")
+async def portal_disponibilidad_turnos():
+    """Resumen para portal de doctores por turno"""
+    turnos = {}
+
+    for turno in TURNOS:
+        total_turno = len([m for m in medicos_db if m.turno == turno])
+        disponibles = [m for m in medicos_db if medico_disponible_en_turno(m, turno)]
+        sugerido = candidatos_jineteo(turno, especialidad=None)
+
+        turnos[turno] = {
+            "total_medicos": total_turno,
+            "disponibles": len(disponibles),
+            "ocupados_o_descanso": total_turno - len(disponibles),
+            "jineteo_recomendado": {
+                "id": sugerido[0].id,
+                "nombre": sugerido[0].nombre,
+                "especialidad": sugerido[0].especialidad,
+                "operaciones_hoy": sugerido[0].operaciones_hoy,
+                "dias_sin_operar": sugerido[0].dias_sin_operar
+            } if sugerido else None
+        }
+
+    return {
+        "fecha_sistema": fecha_actual,
+        "turnos": turnos,
+        "regla_jineteo": "dias_sin_operar DESC, operaciones_hoy ASC"
+    }
+
+@app.post("/personal/portal/solicitar-turno")
+async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
+    """
+    Portal de doctores:
+    - Si el solicitante puede tomar su turno, se asigna directo.
+    - Si no, se reasigna automaticamente via jineteo.
+    """
+    if solicitud.turno_deseado not in TURNOS:
+        raise HTTPException(status_code=400, detail="Turno invalido")
+
+    medico = find_medico_by_id(solicitud.medico_id)
+    if not medico:
+        raise HTTPException(status_code=404, detail="Medico no encontrado")
+
+    if medico_disponible_en_turno(medico, solicitud.turno_deseado):
+        aplicar_operacion_a_medico(medico)
+        registro = registrar_solicitud_turno(
+            medico_solicitante=medico,
+            turno_solicitado=solicitud.turno_deseado,
+            estado="asignado_directo",
+            motivo="El solicitante estaba disponible en su turno deseado.",
+            medico_asignado=medico,
+            quirofano_id=solicitud.quirofano_id
+        )
+        return {
+            "success": True,
+            "estado": "asignado_directo",
+            "message": f"Turno confirmado para {medico.nombre}",
+            "solicitud": registro,
+            "medico_asignado": medico
+        }
+
+    candidatos = candidatos_jineteo(
+        turno=solicitud.turno_deseado,
+        especialidad=medico.especialidad,
+        excluir_medico_id=medico.id
+    )
+
+    if not candidatos:
+        registro = registrar_solicitud_turno(
+            medico_solicitante=medico,
+            turno_solicitado=solicitud.turno_deseado,
+            estado="rechazado",
+            motivo="No hay medicos disponibles para reasignacion en el turno solicitado.",
+            medico_asignado=None,
+            quirofano_id=solicitud.quirofano_id
+        )
+        return {
+            "success": False,
+            "estado": "rechazado",
+            "message": "No se pudo asignar turno ni encontrar reemplazo por jineteo.",
+            "solicitud": registro,
+            "medico_asignado": None
+        }
+
+    reasignado = candidatos[0]
+    aplicar_operacion_a_medico(reasignado)
+
+    registro = registrar_solicitud_turno(
+        medico_solicitante=medico,
+        turno_solicitado=solicitud.turno_deseado,
+        estado="reasignado_jineteo",
+        motivo="Solicitante sin disponibilidad; se aplico jineteo automatico.",
+        medico_asignado=reasignado,
+        quirofano_id=solicitud.quirofano_id
+    )
+
+    return {
+        "success": True,
+        "estado": "reasignado_jineteo",
+        "message": f"No habia cupo para {medico.nombre}; se reasigno a {reasignado.nombre}",
+        "solicitud": registro,
+        "medico_solicitante": medico,
+        "medico_asignado": reasignado,
+        "alternativas": candidatos[1:4],
+        "criterio": "dias_sin_operar DESC, operaciones_hoy ASC"
+    }
+
+@app.get("/personal/portal/solicitudes")
+async def portal_solicitudes(
+    medico_id: Optional[int] = Query(None),
+    limit: int = Query(25, ge=1, le=200)
+):
+    """Historial de solicitudes del portal de doctores"""
+    resultado = solicitudes_turno_db
+
+    if medico_id is not None:
+        resultado = [s for s in resultado if s.medico_solicitante_id == medico_id]
+
+    ordenadas = sorted(resultado, key=lambda s: s.id, reverse=True)
+
+    return {
+        "total": len(resultado),
+        "solicitudes": ordenadas[:limit]
+    }
+
+@app.get("/personal/portal/medico/{medico_id}/resumen")
+async def portal_resumen_medico(medico_id: int):
+    """Resumen para la vista principal del medico en portal"""
+    medico = find_medico_by_id(medico_id)
+    if not medico:
+        raise HTTPException(status_code=404, detail="Medico no encontrado")
+
+    historial = [s for s in solicitudes_turno_db if s.medico_solicitante_id == medico_id]
+    ultimas = sorted(historial, key=lambda s: s.id, reverse=True)[:5]
+
+    return {
+        "medico": medico,
+        "puede_operar_hoy": medico.disponible and medico.operaciones_hoy < medico.max_operaciones,
+        "turno_actual": medico.turno,
+        "operaciones_hoy": medico.operaciones_hoy,
+        "max_operaciones": medico.max_operaciones,
+        "dias_sin_operar": medico.dias_sin_operar,
+        "solicitudes_totales": len(historial),
+        "ultimas_solicitudes": ultimas
+    }
 
 @app.get("/personal/disponibilidad")
 async def disponibilidad():

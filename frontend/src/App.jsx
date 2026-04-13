@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import Dashboard from './pages/Dashboard'
-import SqlTerminal from './pages/SqlTerminal'
 import Horarios from './pages/Horarios'
 import AsignacionMedicos from './pages/AsignacionMedicos'
+import DoctorPortal from './pages/DoctorPortal'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -22,7 +22,7 @@ function App() {
             className={`nav-tab ${activeTab === 'asignacion' ? 'active' : ''}`}
             onClick={() => setActiveTab('asignacion')}
           >
-            Asignar Bloques
+            Asignar Bloques (Admin)
           </button>
           <button
             className={`nav-tab ${activeTab === 'horarios' ? 'active' : ''}`}
@@ -31,10 +31,10 @@ function App() {
             Ver Horarios
           </button>
           <button
-            className={`nav-tab ${activeTab === 'terminal' ? 'active' : ''}`}
-            onClick={() => setActiveTab('terminal')}
+            className={`nav-tab ${activeTab === 'portal-doctor' ? 'active' : ''}`}
+            onClick={() => setActiveTab('portal-doctor')}
           >
-            Terminal SQL
+            Portal Doctores
           </button>
         </nav>
       </header>
@@ -43,7 +43,7 @@ function App() {
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'asignacion' && <AsignacionMedicos />}
         {activeTab === 'horarios' && <Horarios />}
-        {activeTab === 'terminal' && <SqlTerminal />}
+        {activeTab === 'portal-doctor' && <DoctorPortal />}
       </main>
     </div>
   )

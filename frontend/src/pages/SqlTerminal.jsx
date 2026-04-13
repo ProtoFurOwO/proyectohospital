@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import TokenTable from '../components/TokenTable'
 import LogConsole from '../components/LogConsole'
 
-const API_URL = 'http://localhost:8003'
+const API_URL = 'http://localhost:8006'
 
 function SqlTerminal() {
   const [query, setQuery] = useState('CREATE DATABASE hospital;')
@@ -112,7 +112,7 @@ function SqlTerminal() {
   return (
     <div>
       <div style={{ marginBottom: '1rem', color: '#888', fontSize: '0.85rem' }}>
-        Motor SQL - Analizador Lexico, Sintactico y Semantico
+        Motor SQL separado - Analizador Lexico, Sintactico y Semantico
       </div>
 
       <div className="terminal-container">

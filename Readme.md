@@ -9,10 +9,11 @@
 
 Sistema de gestion hospitalaria con:
 - **4 Microservicios FastAPI** (Python) - cada uno con su base de datos
-- **1 Servicio Go** - Quirofanos + Motor SQL propio
+- **1 Servicio Go de Quirofanos** (operacion hospitalaria)
+- **1 Servicio Go de Compiladores** (Motor SQL separado)
 - **Motor SQL** con analizador lexico, sintactico y semantico
 - **Dashboard React** de 30 quirofanos con estados en tiempo real
-- **Terminal SQL** con visualizador de tokens
+- **UI SQL independiente** en otro puerto
 
 ---
 
@@ -21,22 +22,26 @@ Sistema de gestion hospitalaria con:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         FRONTEND (React/Vite)                    │
-│                    Dashboard + Terminal SQL                      │
+│                         Dashboard Admin                           │
 └─────────────────────────────────────────────────────────────────┘
                                   │
           ┌───────────┬───────────┼───────────┬───────────┐
           ▼           ▼           ▼           ▼           ▼
      ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-     │ FastAPI │ │ FastAPI │ │   Go    │ │ FastAPI │ │ FastAPI │
-     │  :8001  │ │  :8002  │ │  :8003  │ │  :8004  │ │  :8005  │
-     │  Citas  │ │Expedient│ │Quirofano│ │ Insumos │ │Personal │
-     │         │ │         │ │+MotorSQL│ │         │ │         │
+     │ FastAPI │ │ FastAPI │ │   Go    │ │ FastAPI │ │FastAPI  │
+     │  :8001  │ │  :8002  │ │  :8003  │ │  :8004  │ │ :8005   │
+     │  Citas  │ │Expedient│ │Quirofano│ │ Insumos │ │Personal  │
      └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘
           │           │           │           │           │
      ┌────▼────┐ ┌────▼────┐ ┌────▼────┐ ┌────▼────┐ ┌────▼────┐
      │  MySQL  │ │PostgreSQL│ │ MariaDB │ │ MongoDB │ │  Redis  │
      │  :3306  │ │  :5432  │ │  :3307  │ │ :27017  │ │  :6379  │
      └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                   COMPILADORES (Go + UI propia)                │
+│                    Motor SQL separado :8006                    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -66,13 +71,6 @@ Doble click en: start.bat
 
 Todos los servicios correran en background. Presiona cualquier tecla para detenerlos.
 
-**O individualmente para debugging:**
-- `run-citas.bat` - Puerto 8001
-- `run-expedientes.bat` - Puerto 8002
-- `run-quirofanos.bat` - Puerto 8003
-- `run-insumos.bat` - Puerto 8004
-- `run-personal.bat` - Puerto 8005
-
 ### 4. Iniciar Frontend
 ```bash
 cd frontend
@@ -81,6 +79,10 @@ npm run dev
 ```
 
 Abrir: http://localhost:5173
+
+### 5. Abrir Compiladores (Servicio separado)
+- UI: http://localhost:8006
+- Health: http://localhost:8006/health
 
 ---
 
@@ -138,14 +140,21 @@ Verifica logica:
 | GET | /expedientes | Lista expedientes |
 | GET | /expedientes/validar?paciente_id=X | Valida si puede operar |
 
-### Quirofanos + Motor SQL (Go - Puerto 8003)
+### Quirofanos (Go - Puerto 8003)
 | Metodo | Endpoint | Descripcion |
 |--------|----------|-------------|
 | GET | /quirofanos | Lista 30 quirofanos |
 | POST | /quirofanos/:id/iniciar | Inicia cirugia |
 | POST | /quirofanos/:id/terminar | Termina cirugia |
+
+### Compiladores (Go - Puerto 8006)
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| GET | / | UI del motor SQL |
 | POST | /sql/execute | Ejecuta consulta SQL |
 | POST | /sql/tokenize | Solo tokeniza |
+| GET | /sql/logs | Consulta historial |
+| DELETE | /sql/logs | Limpia historial |
 
 ### Insumos (FastAPI - Puerto 8004)
 | Metodo | Endpoint | Descripcion |
@@ -160,6 +169,10 @@ Verifica logica:
 | GET | /personal/medicos | Lista 60 medicos |
 | GET | /personal/disponibilidad | Resumen de disponibilidad |
 | GET | /personal/jineteo | Algoritmo de asignacion equitativa |
+| POST | /personal/portal/solicitar-turno | Solicitud de turno de doctor con fallback jineteo |
+| GET | /personal/portal/disponibilidad-turnos | Cupos disponibles por turno |
+| GET | /personal/portal/medico/{id}/resumen | Estado del doctor en portal |
+| GET | /personal/portal/solicitudes | Historial de solicitudes |
 
 ---
 
@@ -169,14 +182,15 @@ Verifica logica:
 proyectocomtd4/
 ├── docker-compose.yml          # 5 bases de datos
 ├── requirements.txt            # Dependencias Python
-├── start-services.ps1          # Script de inicio
+├── start.bat                   # Script de inicio
 ├── services/                   # Microservicios FastAPI
 │   ├── citas/main.py           # MySQL :8001
 │   ├── expedientes/main.py     # PostgreSQL :8002
 │   ├── insumos/main.py         # MongoDB :8004
 │   └── personal/main.py        # Redis :8005
 ├── backend/                    # Servicio Go
-│   ├── cmd/quirofanos/         # Quirofanos + Motor SQL :8003
+│   ├── cmd/quirofanos/         # Quirofanos :8003
+│   ├── cmd/compiler/           # Compiladores + UI SQL :8006
 │   └── compiler/               # Motor SQL
 │       ├── lexer.go            # Analizador Lexico
 │       ├── parser.go           # Analizador Sintactico
@@ -186,7 +200,9 @@ proyectocomtd4/
     └── src/
         ├── pages/
         │   ├── Dashboard.jsx
-        │   └── SqlTerminal.jsx
+        │   ├── AsignacionMedicos.jsx
+        │   ├── Horarios.jsx
+        │   └── DoctorPortal.jsx
         └── components/
             ├── QuirofanoCard.jsx
             ├── TokenTable.jsx
@@ -220,7 +236,9 @@ proyectocomtd4/
    - http://localhost:8001/docs (Citas - Swagger)
    - http://localhost:8002/docs (Expedientes - Swagger)
    - http://localhost:8003/health (Quirofanos)
+  - http://localhost:8006/health (Compiladores)
    - http://localhost:8004/docs (Insumos - Swagger)
    - http://localhost:8005/docs (Personal - Swagger)
 5. Frontend: `cd frontend && npm run dev`
-6. Abrir: http://localhost:5173
+6. Abrir Admin + Portal Doctores: http://localhost:5173
+7. Abrir Compiladores: http://localhost:8006

@@ -137,10 +137,10 @@ function AsignacionMedicos() {
   return (
     <div>
       <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>
-        🗓️ Asignación de Bloques - Médicos
+        🗓️ Asignación de Bloques - Admin
       </h2>
       <p style={{ color: '#888', marginBottom: '2rem' }}>
-        Los médicos pueden seleccionar bloques de 4 horas (3h cirugía + 1h limpieza). Máximo 2 operaciones por día.
+        Vista administrativa para asignar bloques de 4 horas (3h cirugía + 1h limpieza). Máximo 2 operaciones por día.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem' }}>

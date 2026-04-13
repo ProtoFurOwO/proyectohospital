@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"hospital-system/compiler"
 	"hospital-system/internal/models"
 )
 
@@ -18,14 +17,8 @@ type QuirofanoService struct {
 	mu         sync.RWMutex
 }
 
-// SQLService maneja el motor SQL
-type SQLService struct {
-	executor *compiler.Executor
-}
-
 var (
 	quirofanoSvc *QuirofanoService
-	sqlSvc       *SQLService
 )
 
 func init() {
@@ -39,11 +32,6 @@ func init() {
 			Numero: i,
 			Estado: models.Disponible,
 		}
-	}
-
-	// Inicializar Motor SQL
-	sqlSvc = &SQLService{
-		executor: compiler.NewExecutor(),
 	}
 }
 
@@ -68,18 +56,12 @@ func main() {
 	http.HandleFunc("/quirofanos", corsMiddleware(handleQuirofanos))
 	http.HandleFunc("/quirofanos/", corsMiddleware(handleQuirofanoAction))
 
-	// Rutas del Motor SQL
-	http.HandleFunc("/sql/execute", corsMiddleware(handleSQLExecute))
-	http.HandleFunc("/sql/tokenize", corsMiddleware(handleSQLTokenize))
-	http.HandleFunc("/sql/logs", corsMiddleware(handleSQLLogs))
-
 	// Health check
 	http.HandleFunc("/health", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "quirofanos"})
 	}))
 
 	log.Println("🏥 Servicio de Quirófanos iniciado en puerto 8003")
-	log.Println("📊 Motor SQL disponible en /sql/execute")
 	log.Fatal(http.ListenAndServe(":8003", nil))
 }
 
@@ -321,80 +303,6 @@ func handleUrgencia(w http.ResponseWriter, r *http.Request, id int) {
 		"data":     targetQ,
 		"urgencia": true,
 	})
-}
-
-// ================= HANDLERS DE MOTOR SQL =================
-
-type SQLRequest struct {
-	Query string `json:"query"`
-}
-
-type SQLResponse struct {
-	Success bool             `json:"success"`
-	Message string           `json:"message"`
-	Tokens  []compiler.Token `json:"tokens"`
-	Data    interface{}      `json:"data,omitempty"`
-}
-
-func handleSQLExecute(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req SQLRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "JSON inválido", http.StatusBadRequest)
-		return
-	}
-
-	result, tokens := sqlSvc.executor.Execute(req.Query)
-
-	response := SQLResponse{
-		Success: result.Success,
-		Message: result.Message,
-		Tokens:  tokens,
-		Data:    result.Data,
-	}
-
-	json.NewEncoder(w).Encode(response)
-}
-
-func handleSQLTokenize(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req SQLRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "JSON inválido", http.StatusBadRequest)
-		return
-	}
-
-	tokens := sqlSvc.executor.Tokenize(req.Query)
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"tokens": tokens,
-		"query":  req.Query,
-	})
-}
-
-func handleSQLLogs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method == http.MethodDelete {
-		sqlSvc.executor.ClearLogs()
-		json.NewEncoder(w).Encode(map[string]string{"message": "Logs limpiados"})
-		return
-	}
-
-	logs := sqlSvc.executor.GetLogs()
-	json.NewEncoder(w).Encode(logs)
 }
 
 // Helper function

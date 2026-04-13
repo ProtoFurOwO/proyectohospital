@@ -21,9 +21,13 @@ echo [8005] Iniciando Personal...
 start /B python -m uvicorn services.personal.main:app --port 8005 >nul 2>&1
 
 timeout /t 2 /nobreak >nul
-echo [8003] Iniciando Quirofanos + Motor SQL...
+echo [8003] Iniciando Quirofanos...
 cd backend
 start /B go run ./cmd/quirofanos >nul 2>&1
+
+timeout /t 2 /nobreak >nul
+echo [8006] Iniciando Compiladores (Motor SQL)...
+start /B go run ./cmd/compiler >nul 2>&1
 cd ..
 
 timeout /t 3 /nobreak >nul
@@ -39,9 +43,13 @@ echo   http://localhost:8002/docs
 echo   http://localhost:8004/docs
 echo   http://localhost:8005/docs
 echo.
-echo Quirofanos + Motor SQL:
+echo Quirofanos:
 echo   http://localhost:8003/health
-echo   http://localhost:8003/sql/execute
+echo.
+echo Compiladores (servicio separado):
+echo   http://localhost:8006/health
+echo   http://localhost:8006
+echo   http://localhost:8006/sql/execute
 echo.
 echo Frontend:
 echo   cd frontend ^&^& npm run dev
