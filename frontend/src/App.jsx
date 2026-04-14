@@ -3,6 +3,8 @@ import Dashboard from './pages/Dashboard'
 import Horarios from './pages/Horarios'
 import AsignacionMedicos from './pages/AsignacionMedicos'
 import DoctorPortal from './pages/DoctorPortal'
+import CitasAdmin from './pages/CitasAdmin'
+import ExpedientesAdmin from './pages/ExpedientesAdmin'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -36,6 +38,18 @@ function App() {
           >
             Portal Doctores
           </button>
+          <button
+            className={`nav-tab ${activeTab === 'citas-admin' ? 'active' : ''}`}
+            onClick={() => setActiveTab('citas-admin')}
+          >
+            Citas Admin
+          </button>
+          <button
+            className={`nav-tab ${activeTab === 'expedientes-admin' ? 'active' : ''}`}
+            onClick={() => setActiveTab('expedientes-admin')}
+          >
+            Expedientes Admin
+          </button>
         </nav>
       </header>
 
@@ -44,6 +58,8 @@ function App() {
         {activeTab === 'asignacion' && <AsignacionMedicos />}
         {activeTab === 'horarios' && <Horarios />}
         {activeTab === 'portal-doctor' && <DoctorPortal />}
+        {activeTab === 'citas-admin' && <CitasAdmin />}
+        {activeTab === 'expedientes-admin' && <ExpedientesAdmin />}
       </main>
     </div>
   )
