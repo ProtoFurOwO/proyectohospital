@@ -10,15 +10,32 @@ function Horarios() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => new Date().toISOString().slice(0, 10))
   const [loading, setLoading] = useState(true)
 
-  const TURNOS = {
-    manana: { nombre: 'Mañana', horario: '08:00 - 16:00', color: '#ffa502' },
-    tarde: { nombre: 'Tarde', horario: '16:00 - 00:00', color: '#3742fa' },
-    noche: { nombre: 'Noche', horario: '00:00 - 08:00', color: '#5f27cd' }
+  const getEstadoPortalLabel = (estado) => {
+    if (estado === 'asignado_directo') return 'Horario asignado'
+    if (estado === 'ajustado_jineteo') return 'Horario ajustado'
+    if (estado === 'reprogramado_jineteo') return 'Horario reasignado'
+    if (estado === 'reasignado_jineteo') return 'Horario reasignado'
+    if (estado === 'rechazado') return 'Sin disponibilidad'
+    if (!estado) return 'Sin estado'
+
+    return String(estado)
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase())
   }
 
-  const BLOQUES_HORARIOS = [
-    '08:00', '12:00', '16:00', '20:00', '00:00', '04:00'
-  ]
+  const TURNOS = {
+    manana: { nombre: 'Mañana', horario: '08:00 - 16:00', color: '#ffa502' },
+    tarde: { nombre: 'Tarde', horario: '16:00 - 00:00', color: '#0a78b5' },
+    noche: { nombre: 'Noche', horario: '00:00 - 08:00', color: '#0b8f9b' }
+  }
+
+  const BLOQUES_POR_TURNO = {
+    manana: ['08:00', '12:00'],
+    tarde: ['16:00', '20:00'],
+    noche: ['00:00', '04:00']
+  }
+
+  const bloquesVisibles = BLOQUES_POR_TURNO[turnoActual] || []
 
   useEffect(() => {
     fetchData()
@@ -28,8 +45,16 @@ function Horarios() {
 
   const extraerFecha = (fechaValor) => {
     if (!fechaValor) return ''
-    if (typeof fechaValor === 'string') return fechaValor.slice(0, 10)
-    return new Date(fechaValor).toISOString().slice(0, 10)
+
+    const parsed = new Date(fechaValor)
+    if (!Number.isNaN(parsed.getTime())) {
+      const y = parsed.getFullYear()
+      const m = String(parsed.getMonth() + 1).padStart(2, '0')
+      const d = String(parsed.getDate()).padStart(2, '0')
+      return `${y}-${m}-${d}`
+    }
+
+    return String(fechaValor).slice(0, 10)
   }
 
   const mapearProgramacionPortal = (item) => ({
@@ -52,7 +77,7 @@ function Horarios() {
     try {
       const [citasRes, medicosRes, portalRes] = await Promise.all([
         fetch(`${API_CITAS}/citas?turno=${turnoActual}`),
-        fetch(`${API_PERSONAL}/personal/medicos?turno=${turnoActual}`),
+        fetch(`${API_PERSONAL}/personal/medicos`),
         fetch(`${API_PERSONAL}/personal/portal/programaciones?turno=${turnoActual}&fecha=${fechaSeleccionada}`)
       ])
 
@@ -66,9 +91,20 @@ function Horarios() {
         ))
 
         const citasPortal = (portalData.programaciones || []).map(mapearProgramacionPortal)
+        const citasCombinadas = [...citasDelDia, ...citasPortal]
 
-        setCitas([...citasDelDia, ...citasPortal])
-        setMedicos(medicosData)
+        // Para demo: la vista de horarios se amarra a asignaciones/citas reales del turno seleccionado.
+        const medicosActivosIds = new Set(
+          citasCombinadas
+            .map((item) => item.medico_id)
+            .filter((id) => id !== null && id !== undefined)
+        )
+
+        const medicosActivos = medicosData.filter((item) => medicosActivosIds.has(item.id))
+        const medicosFallback = medicosData.filter((item) => item.disponible).slice(0, 12)
+
+        setCitas(citasCombinadas)
+        setMedicos(medicosActivos.length > 0 ? medicosActivos : medicosFallback)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -113,10 +149,10 @@ function Horarios() {
             style={{
               width: '100%',
               padding: '0.65rem',
-              background: '#0f3460',
-              border: '1px solid #3742fa',
+              background: '#e6f5ff',
+              border: '1px solid #0a78b5',
               borderRadius: '6px',
-              color: '#fff'
+              color: '#1f435f'
             }}
           />
         </div>
@@ -128,10 +164,10 @@ function Horarios() {
               onClick={() => setTurnoActual(key)}
               style={{
                 padding: '1rem 2rem',
-                background: turnoActual === key ? turno.color : '#16213e',
+                background: turnoActual === key ? turno.color : '#ffffff',
                 border: `2px solid ${turno.color}`,
                 borderRadius: '8px',
-                color: '#fff',
+                color: turnoActual === key ? '#fff' : '#1f435f',
                 cursor: 'pointer',
                 flex: 1,
                 transition: 'all 0.3s ease'
@@ -152,34 +188,34 @@ function Horarios() {
         marginBottom: '2rem'
       }}>
         <div style={{
-          background: '#16213e',
+          background: '#ffffff',
           padding: '1rem',
           borderRadius: '8px',
-          border: '1px solid #0f3460'
+          border: '1px solid #e6f5ff'
         }}>
           <div style={{ color: '#888', fontSize: '0.85rem' }}>Médicos en turno</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#00ff88' }}>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#14b8a6' }}>
             {medicos.length}
           </div>
         </div>
 
         <div style={{
-          background: '#16213e',
+          background: '#ffffff',
           padding: '1rem',
           borderRadius: '8px',
-          border: '1px solid #0f3460'
+          border: '1px solid #e6f5ff'
         }}>
           <div style={{ color: '#888', fontSize: '0.85rem' }}>Cirugías programadas</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#3742fa' }}>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#0a78b5' }}>
             {citas.length}
           </div>
         </div>
 
         <div style={{
-          background: '#16213e',
+          background: '#ffffff',
           padding: '1rem',
           borderRadius: '8px',
-          border: '1px solid #0f3460'
+          border: '1px solid #e6f5ff'
         }}>
           <div style={{ color: '#888', fontSize: '0.85rem' }}>Médicos disponibles</div>
           <div style={{ fontSize: '2rem', fontWeight: '700', color: '#ffa502' }}>
@@ -188,10 +224,10 @@ function Horarios() {
         </div>
 
         <div style={{
-          background: '#16213e',
+          background: '#ffffff',
           padding: '1rem',
           borderRadius: '8px',
-          border: '1px solid #0f3460'
+          border: '1px solid #e6f5ff'
         }}>
           <div style={{ color: '#888', fontSize: '0.85rem' }}>Urgencias</div>
           <div style={{ fontSize: '2rem', fontWeight: '700', color: '#ff4757' }}>
@@ -202,7 +238,7 @@ function Horarios() {
 
       {/* Grid de médicos con sus cargas */}
       <div style={{ marginBottom: '2rem' }}>
-        <h3 style={{ marginBottom: '1rem', color: '#3742fa' }}>
+        <h3 style={{ marginBottom: '1rem', color: '#0a78b5' }}>
           👨‍⚕️ Médicos del turno - Algoritmo de Jineteo
         </h3>
         <div style={{
@@ -216,22 +252,22 @@ function Horarios() {
 
             return (
               <div key={medico.id} style={{
-                background: '#16213e',
+                background: '#ffffff',
                 padding: '1rem',
                 borderRadius: '8px',
-                border: `2px solid ${disponible ? '#00ff88' : '#666'}`,
+                border: `2px solid ${disponible ? '#14b8a6' : '#666'}`,
                 opacity: disponible ? 1 : 0.6
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span style={{ fontWeight: '600' }}>{medico.nombre}</span>
-                  {disponible && <span style={{ color: '#00ff88', fontSize: '0.8rem' }}>✓</span>}
+                  {disponible && <span style={{ color: '#14b8a6', fontSize: '0.8rem' }}>✓</span>}
                 </div>
                 <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
                   {medico.especialidad}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <div style={{
-                    background: medico.operaciones_hoy === 0 ? '#00ff88' : medico.operaciones_hoy === 1 ? '#ffa502' : '#ff4757',
+                    background: medico.operaciones_hoy === 0 ? '#14b8a6' : medico.operaciones_hoy === 1 ? '#ffa502' : '#ff4757',
                     padding: '0.25rem 0.5rem',
                     borderRadius: '4px',
                     fontSize: '0.75rem',
@@ -252,19 +288,19 @@ function Horarios() {
 
       {/* Timeline de bloques de 4 horas */}
       <div>
-        <h3 style={{ marginBottom: '1rem', color: '#3742fa' }}>
+        <h3 style={{ marginBottom: '1rem', color: '#0a78b5' }}>
           🕐 Bloques de cirugías (4 horas cada uno)
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {BLOQUES_HORARIOS.map(hora => {
+          {bloquesVisibles.map(hora => {
             const citasBloque = getCitasPorHora(hora)
             const horaFin = (parseInt(hora.split(':')[0]) + 4) % 24
             const horaFinStr = `${horaFin.toString().padStart(2, '0')}:00`
 
             return (
               <div key={hora} style={{
-                background: '#16213e',
-                border: '1px solid #0f3460',
+                background: '#ffffff',
+                border: '1px solid #e6f5ff',
                 borderRadius: '8px',
                 padding: '1rem'
               }}>
@@ -276,7 +312,7 @@ function Horarios() {
                     </span>
                   </div>
                   <span style={{
-                    background: citasBloque.length > 0 ? '#3742fa' : '#0f3460',
+                    background: citasBloque.length > 0 ? '#0a78b5' : '#e6f5ff',
                     padding: '0.25rem 1rem',
                     borderRadius: '20px',
                     fontSize: '0.85rem'
@@ -289,7 +325,7 @@ function Horarios() {
                   <div style={{ display: 'grid', gap: '0.5rem' }}>
                     {citasBloque.map(cita => (
                       <div key={cita.id} style={{
-                        background: '#0f3460',
+                        background: '#e6f5ff',
                         padding: '0.75rem',
                         borderRadius: '6px',
                         display: 'flex',
@@ -306,11 +342,12 @@ function Horarios() {
                             {cita.tipo_cirugia} - Dr. {cita.medico_nombre}
                           </div>
                           <div style={{ color: cita.source === 'portal' ? '#ffa502' : '#9aa', fontSize: '0.75rem' }}>
-                            {cita.source === 'portal' ? `Portal doctor (${cita.estado_portal})` : 'Cita servicio'}
+                            {cita.source === 'portal' ? `Portal doctor (${getEstadoPortalLabel(cita.estado_portal)})` : 'Cita servicio'}
                           </div>
                         </div>
                         <div style={{
-                          background: '#3742fa',
+                          background: '#0a78b5',
+                          color: '#fff',
                           padding: '0.25rem 0.75rem',
                           borderRadius: '4px',
                           fontSize: '0.8rem'

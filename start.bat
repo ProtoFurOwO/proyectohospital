@@ -4,6 +4,11 @@ echo   Sistema Hospitalario - Iniciando...
 echo ========================================
 echo.
 
+echo Cerrando procesos previos de servicios...
+taskkill /F /IM python.exe >nul 2>&1
+taskkill /F /IM go.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+
 REM Ejecutar todos los servicios en background (sin ventanas nuevas)
 echo [8001] Iniciando Citas...
 start /B python -m uvicorn services.citas.main:app --port 8001 >nul 2>&1

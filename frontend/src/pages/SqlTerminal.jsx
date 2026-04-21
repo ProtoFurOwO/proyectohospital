@@ -153,17 +153,17 @@ function SqlTerminal() {
               padding: '1rem',
               borderRadius: '8px',
               marginBottom: '1rem',
-              background: result.success ? 'rgba(0,255,136,0.1)' : 'rgba(255,71,87,0.1)',
-              border: `1px solid ${result.success ? '#00ff88' : '#ff4757'}`
+              background: result.success ? 'rgba(20,184,166,0.12)' : 'rgba(255,71,87,0.1)',
+              border: `1px solid ${result.success ? '#14b8a6' : '#ff4757'}`
             }}>
               <div style={{
                 fontWeight: '600',
-                color: result.success ? '#00ff88' : '#ff4757',
+                color: result.success ? '#14b8a6' : '#ff4757',
                 marginBottom: '0.5rem'
               }}>
                 {result.success ? 'EXITO' : 'ERROR'}
               </div>
-              <div style={{ color: '#ccc' }}>{result.message}</div>
+              <div style={{ color: '#36546f' }}>{result.message}</div>
             </div>
           )}
 
@@ -178,9 +178,9 @@ function SqlTerminal() {
                   key={i}
                   onClick={() => setQuery(eq)}
                   style={{
-                    background: '#0f3460',
-                    border: '1px solid #3742fa',
-                    color: '#aaa',
+                    background: '#e6f5ff',
+                    border: '1px solid #0a78b5',
+                    color: '#36546f',
                     padding: '0.25rem 0.5rem',
                     borderRadius: '4px',
                     fontSize: '0.7rem',
@@ -214,8 +214,8 @@ function SqlTerminal() {
               onClick={clearLogs}
               style={{
                 background: 'transparent',
-                border: '1px solid #666',
-                color: '#666',
+                border: '1px solid #68819a',
+                color: '#68819a',
                 padding: '0.25rem 0.5rem',
                 borderRadius: '4px',
                 fontSize: '0.7rem',

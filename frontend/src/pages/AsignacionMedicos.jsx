@@ -16,6 +16,14 @@ function AsignacionMedicos() {
     { key: 'noche', nombre: 'Noche', horario: '00:00-08:00', bloques: ['00:00', '04:00'] }
   ]
 
+  const buildFechaLocalISO = (fecha, hora) => {
+    const year = fecha.getFullYear()
+    const month = String(fecha.getMonth() + 1).padStart(2, '0')
+    const day = String(fecha.getDate()).padStart(2, '0')
+    const hh = String(hora).padStart(2, '0')
+    return `${year}-${month}-${day}T${hh}:00:00`
+  }
+
   useEffect(() => {
     fetchData()
     const interval = setInterval(fetchData, 5000)
@@ -73,6 +81,7 @@ function AsignacionMedicos() {
       const horaNum = parseInt(horaInicio.split(':')[0])
       const fechaCita = new Date()
       fechaCita.setHours(horaNum, 0, 0, 0)
+      const fechaCitaISO = buildFechaLocalISO(fechaCita, horaNum)
 
       const response = await fetch(`${API_CITAS}/citas/programar`, {
         method: 'POST',
@@ -82,7 +91,7 @@ function AsignacionMedicos() {
           paciente_nombre: 'Paciente Programado',
           medico_id: medico.id,
           medico_nombre: medico.nombre,
-          fecha_cita: fechaCita.toISOString(),
+          fecha_cita: fechaCitaISO,
           tipo_cirugia: medico.especialidad,
           turno: turno,
           es_urgencia: false
@@ -147,15 +156,15 @@ function AsignacionMedicos() {
         {/* Panel izquierdo - Selección de médico */}
         <div>
           <div style={{
-            background: '#16213e',
-            border: '1px solid #0f3460',
+            background: '#ffffff',
+            border: '1px solid #e6f5ff',
             borderRadius: '8px',
             padding: '1rem',
             marginBottom: '1rem',
             position: 'sticky',
             top: '1rem'
           }}>
-            <h3 style={{ marginBottom: '1rem', color: '#3742fa' }}>
+            <h3 style={{ marginBottom: '1rem', color: '#0a78b5' }}>
               Seleccionar Médico
             </h3>
 
@@ -166,10 +175,10 @@ function AsignacionMedicos() {
                 style={{
                   width: '100%',
                   padding: '0.5rem',
-                  background: '#0f3460',
-                  border: '1px solid #3742fa',
+                  background: '#e6f5ff',
+                  border: '1px solid #0a78b5',
                   borderRadius: '4px',
-                  color: '#fff',
+                  color: '#1f435f',
                   marginBottom: '1rem'
                 }}
               >
@@ -188,23 +197,30 @@ function AsignacionMedicos() {
                   style={{
                     padding: '0.75rem',
                     marginBottom: '0.5rem',
-                    background: medicoSeleccionado === medico.id ? '#3742fa' : '#0f3460',
-                    border: `2px solid ${medico.disponible && medico.operaciones_hoy < 2 ? '#00ff88' : '#666'}`,
+                    background: medicoSeleccionado === medico.id ? '#0a78b5' : '#e6f5ff',
+                    border: `2px solid ${medico.disponible && medico.operaciones_hoy < 2 ? '#14b8a6' : '#666'}`,
                     borderRadius: '6px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    opacity: medico.disponible && medico.operaciones_hoy < 2 ? 1 : 0.5
+                    opacity: medico.disponible && medico.operaciones_hoy < 2 ? 1 : 0.5,
+                    color: medicoSeleccionado === medico.id ? '#fff' : '#1f435f'
                   }}
                 >
                   <div style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
                     {medico.nombre}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.25rem' }}>
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: medicoSeleccionado === medico.id ? '#d7eefb' : '#68819a',
+                      marginBottom: '0.25rem'
+                    }}
+                  >
                     {medico.especialidad}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{
-                      background: medico.operaciones_hoy === 0 ? '#00ff88' : medico.operaciones_hoy === 1 ? '#ffa502' : '#ff4757',
+                      background: medico.operaciones_hoy === 0 ? '#14b8a6' : medico.operaciones_hoy === 1 ? '#ffa502' : '#ff4757',
                       color: '#000',
                       padding: '0.1rem 0.4rem',
                       borderRadius: '3px',
@@ -213,7 +229,12 @@ function AsignacionMedicos() {
                     }}>
                       {medico.operaciones_hoy}/2
                     </span>
-                    <span style={{ fontSize: '0.7rem', color: '#666' }}>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        color: medicoSeleccionado === medico.id ? '#d7eefb' : '#607890'
+                      }}
+                    >
                       {medico.turno}
                     </span>
                   </div>
@@ -224,12 +245,12 @@ function AsignacionMedicos() {
 
           {medicoSeleccionado && (
             <div style={{
-              background: '#16213e',
-              border: '2px solid #00ff88',
+              background: '#ffffff',
+              border: '2px solid #14b8a6',
               borderRadius: '8px',
               padding: '1rem'
             }}>
-              <div style={{ fontWeight: '600', color: '#00ff88', marginBottom: '0.5rem' }}>
+              <div style={{ fontWeight: '600', color: '#14b8a6', marginBottom: '0.5rem' }}>
                 ✓ Médico seleccionado
               </div>
               <div style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>
@@ -237,7 +258,7 @@ function AsignacionMedicos() {
               </div>
 
               {/* Cirugías programadas */}
-              <div style={{ borderTop: '1px solid #0f3460', paddingTop: '1rem' }}>
+              <div style={{ borderTop: '1px solid #e6f5ff', paddingTop: '1rem' }}>
                 <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '0.5rem' }}>
                   Cirugías programadas:
                 </div>
@@ -245,14 +266,14 @@ function AsignacionMedicos() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {getCitasPorMedico(medicoSeleccionado).map(cita => (
                       <div key={cita.id} style={{
-                        background: '#0f3460',
+                        background: '#e6f5ff',
                         padding: '0.5rem',
                         borderRadius: '4px',
                         fontSize: '0.8rem'
                       }}>
                         <div style={{ fontWeight: '600' }}>{cita.paciente_nombre}</div>
                         <div style={{ color: '#888' }}>{cita.tipo_cirugia}</div>
-                        <div style={{ color: '#3742fa', fontSize: '0.75rem' }}>
+                        <div style={{ color: '#0a78b5', fontSize: '0.75rem' }}>
                           {new Date(cita.fecha_cita).toLocaleString('es-MX')}
                         </div>
                       </div>
@@ -275,8 +296,8 @@ function AsignacionMedicos() {
 
             return (
               <div key={turno.key} style={{
-                background: '#16213e',
-                border: '1px solid #0f3460',
+                background: '#ffffff',
+                border: '1px solid #e6f5ff',
                 borderRadius: '8px',
                 padding: '1.5rem',
                 marginBottom: '1.5rem'
@@ -312,8 +333,8 @@ function AsignacionMedicos() {
 
                     return (
                       <div key={horaInicio} style={{
-                        background: citaOcupada ? '#0f3460' : '#1a1a2e',
-                        border: `2px solid ${citaOcupada ? '#666' : esSugerido ? '#ffa502' : '#3742fa'}`,
+                        background: citaOcupada ? '#e6f5ff' : '#f4fbff',
+                        border: `2px solid ${citaOcupada ? '#666' : esSugerido ? '#ffa502' : '#0a78b5'}`,
                         borderRadius: '8px',
                         padding: '1rem',
                         position: 'relative'
@@ -345,7 +366,7 @@ function AsignacionMedicos() {
                             style={{
                               width: '100%',
                               padding: '0.75rem',
-                              background: medicoSeleccionado ? (esSugerido ? '#ffa502' : '#00ff88') : '#666',
+                              background: medicoSeleccionado ? (esSugerido ? '#ffa502' : '#14b8a6') : '#666',
                               color: '#000',
                               border: 'none',
                               borderRadius: '6px',

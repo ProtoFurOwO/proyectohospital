@@ -46,6 +46,7 @@ class Cita(BaseModel):
     responsable_anestesia: Optional[str] = None
     estado: str  # programada, en_curso, completada, cancelada
     es_urgencia: bool = False
+    requiere_expediente: bool = True
     turno: str  # manana, tarde, noche
     origen_programacion: str = "legacy"
 
@@ -63,6 +64,7 @@ class CitaCreate(BaseModel):
     urgencia_intervencion: Optional[str] = None
     responsable_anestesia: Optional[str] = None
     es_urgencia: bool = False
+    requiere_expediente: bool = True
 
 
 CATALOGOS_CITAS = {
@@ -163,14 +165,6 @@ async def _expedientes_get(path: str, params: Optional[dict] = None):
 async def obtener_expediente_por_numero(numero_expediente: str):
     return await _expedientes_get(f"/expedientes/numero/{numero_expediente}")
 
-
-async def obtener_expediente_por_paciente(paciente_id: int):
-    return await _expedientes_get(f"/expedientes/paciente/{paciente_id}")
-
-
-async def validar_expediente(numero_expediente: str):
-    return await _expedientes_get("/expedientes/validar", params={"numero_expediente": numero_expediente})
-
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "citas", "db": "mysql", "port": 8001}
@@ -220,10 +214,11 @@ async def get_cita(cita_id: int):
 async def programar_cita(cita: CitaCreate):
     """
     Programa una nueva cita.
-    Si llega numero de expediente, valida preoperatorio en el servicio de expedientes.
+    Flujo oficial: primero cita y luego expediente.
+    Si llega numero de expediente, solo valida que pertenezca al paciente.
+    La validacion de estudios preoperatorios se hace en el paso de Expedientes.
     """
     expediente_data = None
-    validacion_expediente = None
     warning = None
     numero_expediente = cita.numero_expediente_clinico
 
@@ -231,34 +226,13 @@ async def programar_cita(cita: CitaCreate):
         expediente_data = await obtener_expediente_por_numero(numero_expediente)
         if not expediente_data:
             raise HTTPException(status_code=404, detail="No existe el numero de expediente indicado")
-    else:
-        # Compatibilidad con flujo anterior: intentamos ligar por paciente_id.
-        expediente_data = await obtener_expediente_por_paciente(cita.paciente_id)
-        if expediente_data:
-            numero_expediente = expediente_data.get("numero_expediente_clinico")
-
-    if expediente_data:
         if expediente_data.get("paciente_id") != cita.paciente_id:
             raise HTTPException(
                 status_code=409,
                 detail="El paciente_id no coincide con el numero de expediente"
             )
-
-        if numero_expediente:
-            validacion_expediente = await validar_expediente(numero_expediente)
-            if not validacion_expediente["puede_operar"] and not cita.es_urgencia:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "message": "Paciente no apto para cirugia electiva: faltan estudios",
-                        "estudios_faltantes": validacion_expediente["estudios_faltantes"],
-                        "numero_expediente": numero_expediente
-                    }
-                )
-            if not validacion_expediente["puede_operar"] and cita.es_urgencia:
-                warning = "Se programo por urgencia aun con estudios faltantes"
     else:
-        warning = "Cita creada sin expediente vinculado (modo compatibilidad)"
+        warning = "Cita creada sin expediente. Completa el expediente en el Paso 2."
 
     tipo_cirugia = cita.tipo_cirugia or (expediente_data.get("diagnostico_preoperatorio") if expediente_data else "General")
     division_quirurgica = cita.division_quirurgica or (expediente_data.get("division_quirurgica") if expediente_data else None)
@@ -281,8 +255,9 @@ async def programar_cita(cita: CitaCreate):
         responsable_anestesia=responsable_anestesia,
         turno=cita.turno,
         es_urgencia=cita.es_urgencia,
+        requiere_expediente=cita.requiere_expediente,
         estado="programada",
-        origen_programacion="admision-integrada" if expediente_data else "legacy"
+        origen_programacion="admision-integrada" if expediente_data else "flujo-cita-primero"
     )
     citas_db.append(nueva_cita)
 
@@ -290,7 +265,7 @@ async def programar_cita(cita: CitaCreate):
         "success": True,
         "message": "Cita programada exitosamente",
         "data": nueva_cita,
-        "validacion_expediente": validacion_expediente,
+        "validacion_expediente": None,
         "warning": warning
     }
 

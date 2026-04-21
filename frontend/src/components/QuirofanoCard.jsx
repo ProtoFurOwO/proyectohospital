@@ -7,7 +7,7 @@ function QuirofanoCard({ quirofano, onUpdate }) {
 
   const getEstadoColor = (estado) => {
     switch (estado) {
-      case 'disponible': return '#00ff88'
+      case 'disponible': return '#14b8a6'
       case 'ocupado': return '#ff4757'
       case 'limpieza': return '#ffa502'
       default: return '#666'
@@ -53,7 +53,7 @@ function QuirofanoCard({ quirofano, onUpdate }) {
   }
 
   const cardStyle = {
-    background: `linear-gradient(135deg, #16213e 0%, ${getEstadoColor(quirofano.estado)}15 100%)`,
+    background: `linear-gradient(135deg, #ffffff 0%, ${getEstadoColor(quirofano.estado)}15 100%)`,
     border: `2px solid ${getEstadoColor(quirofano.estado)}`,
     borderRadius: '12px',
     padding: '1.25rem',
@@ -72,7 +72,7 @@ function QuirofanoCard({ quirofano, onUpdate }) {
   const numeroStyle = {
     fontSize: '1.25rem',
     fontWeight: '700',
-    color: '#fff'
+    color: '#16324b'
   }
 
   const statusBadge = {
@@ -90,13 +90,13 @@ function QuirofanoCard({ quirofano, onUpdate }) {
   }
 
   const labelStyle = {
-    color: '#888',
+    color: '#607890',
     fontSize: '0.75rem',
     marginBottom: '0.25rem'
   }
 
   const valueStyle = {
-    color: '#fff',
+    color: '#1f435f',
     fontSize: '0.9rem'
   }
 
@@ -153,7 +153,7 @@ function QuirofanoCard({ quirofano, onUpdate }) {
         )}
 
         {quirofano.estado === 'disponible' && (
-          <div style={{ color: '#00ff88', fontSize: '0.9rem' }}>
+          <div style={{ color: '#14b8a6', fontSize: '0.9rem' }}>
             Listo para cirugia
           </div>
         )}

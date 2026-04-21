@@ -123,13 +123,15 @@ for i in range(1, 61):
 roles = ["anestesiologo", "enfermero", "instrumentista"]
 for i in range(1, 31):
     rol = roles[(i - 1) % 3]
+    # Distribuye cada rol en todos los turnos para evitar sesgo fijo por turno.
+    turno = TURNOS[((i - 1) // 3) % len(TURNOS)]
     nombre_rol = "Anest." if rol == "anestesiologo" else "Enf." if rol == "enfermero" else "Inst."
 
     personal_apoyo_db.append(PersonalApoyo(
         id=i,
         nombre=f"{nombre_rol} Personal {i}",
         rol=rol,
-        turno=TURNOS[(i - 1) % 3],
+        turno=turno,
         disponible=True
     ))
 
@@ -346,10 +348,6 @@ async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
     hoy = date.today()
 
     turno_final = solicitud.turno_deseado
-    ajuste_turno = False
-    if solicitud.turno_deseado != medico.turno:
-        turno_final = medico.turno
-        ajuste_turno = True
 
     fecha_asignada = buscar_fecha_disponible(medico, fecha_solicitada, dias_maximos=14)
 
@@ -384,18 +382,13 @@ async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
     else:
         registrar_operacion_programada(medico.id, fecha_asignada_iso)
 
-    if fecha_asignada == fecha_solicitada and not ajuste_turno:
+    if fecha_asignada == fecha_solicitada:
         estado = "asignado_directo"
         motivo = "Turno y fecha disponibles para el doctor solicitante."
         mensaje = f"Turno confirmado para {medico.nombre} el {fecha_asignada_iso}"
     else:
         estado = "reprogramado_jineteo"
-        if ajuste_turno and fecha_asignada != fecha_solicitada:
-            motivo = "Se ajusto al turno real del doctor y se reprogramo al siguiente dia disponible."
-        elif ajuste_turno:
-            motivo = "Se ajusto al turno real del doctor solicitante."
-        else:
-            motivo = "No habia cupo en la fecha solicitada; se reprogramo al siguiente dia disponible para el mismo doctor."
+        motivo = "No habia cupo en la fecha solicitada; se reprogramo al siguiente dia disponible para el mismo doctor."
         mensaje = f"Solicitud reprogramada para {medico.nombre}: {fecha_asignada_iso} ({turno_final})"
 
     registro = registrar_solicitud_turno(

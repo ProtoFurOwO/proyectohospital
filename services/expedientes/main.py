@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from datetime import date
 
 app = FastAPI(
     title="Servicio de Expedientes Clinicos",
@@ -29,6 +30,8 @@ class Estudio(BaseModel):
     resultado: str
     fecha: str
     valido: bool
+    estado: Optional[str] = None
+    observaciones: Optional[str] = None
 
 
 class Expediente(BaseModel):
@@ -93,6 +96,14 @@ class ExpedienteCreate(BaseModel):
     estudios: List[Estudio] = Field(default_factory=list)
 
 
+class EstudioUpdate(BaseModel):
+    estado: str = "pendiente"
+    resultado: Optional[str] = None
+    fecha: Optional[str] = None
+    valido: Optional[bool] = None
+    observaciones: Optional[str] = None
+
+
 class ValidacionResponse(BaseModel):
     paciente_id: int
     numero_expediente_clinico: str
@@ -106,6 +117,7 @@ class ValidacionResponse(BaseModel):
 
 # Estudios requeridos para operar
 ESTUDIOS_REQUERIDOS = ["laboratorio", "cardiograma", "imagen"]
+ESTADOS_ESTUDIO = ["pendiente", "solicitado", "realizado", "validado", "rechazado"]
 
 
 CATALOGOS_EXCEL = {
@@ -125,8 +137,61 @@ CATALOGOS_EXCEL = {
 
 
 def calcular_preproceso(estudios: List[Estudio]) -> bool:
-    tipos_estudios = [e.tipo for e in estudios if e.valido]
+    tipos_estudios = [
+        e.tipo.lower()
+        for e in estudios
+        if e.valido or (e.estado and e.estado.lower() == "validado")
+    ]
     return all(e in tipos_estudios for e in ESTUDIOS_REQUERIDOS)
+
+
+def normalizar_estudio(estudio: Estudio) -> Estudio:
+    estudio.tipo = estudio.tipo.lower().strip()
+
+    if not estudio.estado:
+        estudio.estado = "validado" if estudio.valido else "pendiente"
+    else:
+        estudio.estado = estudio.estado.lower().strip()
+
+    if estudio.estado not in ESTADOS_ESTUDIO:
+        estudio.estado = "validado" if estudio.valido else "pendiente"
+
+    if estudio.estado == "validado":
+        estudio.valido = True
+
+    return estudio
+
+
+def preparar_estudios_requeridos(estudios: List[Estudio]) -> List[Estudio]:
+    estudios_por_tipo = {}
+
+    for estudio in estudios:
+        normalizado = normalizar_estudio(estudio)
+        estudios_por_tipo[normalizado.tipo] = normalizado
+
+    for tipo in ESTUDIOS_REQUERIDOS:
+        if tipo not in estudios_por_tipo:
+            estudios_por_tipo[tipo] = Estudio(
+                id=0,
+                tipo=tipo,
+                resultado="Pendiente",
+                fecha=date.today().isoformat(),
+                valido=False,
+                estado="pendiente",
+                observaciones=None
+            )
+
+    tipos_ordenados = ESTUDIOS_REQUERIDOS + [
+        tipo for tipo in estudios_por_tipo.keys() if tipo not in ESTUDIOS_REQUERIDOS
+    ]
+
+    estudios_finales: List[Estudio] = []
+    for index, tipo in enumerate(tipos_ordenados, start=1):
+        estudio = estudios_por_tipo[tipo]
+        estudio.id = index
+        estudios_finales.append(estudio)
+
+    return estudios_finales
 
 
 # Datos de ejemplo
@@ -226,7 +291,10 @@ async def health():
 @app.get("/expedientes/catalogos")
 async def get_catalogos_expedientes():
     """Catalogos base para formulario administrativo de expedientes"""
-    return CATALOGOS_EXCEL
+    catalogos = dict(CATALOGOS_EXCEL)
+    catalogos["tipos_estudio_requeridos"] = ESTUDIOS_REQUERIDOS
+    catalogos["estados_estudio"] = ESTADOS_ESTUDIO
+    return catalogos
 
 @app.get("/expedientes", response_model=List[Expediente])
 async def get_expedientes():
@@ -304,10 +372,7 @@ async def crear_expediente(expediente: ExpedienteCreate):
         if exp.paciente_id == expediente.paciente_id:
             raise HTTPException(status_code=409, detail="Ya existe un expediente para ese paciente_id")
 
-    estudios_con_id = []
-    for index, estudio in enumerate(expediente.estudios, start=1):
-        estudio.id = index
-        estudios_con_id.append(estudio)
+    estudios_con_id = preparar_estudios_requeridos(expediente.estudios)
 
     nuevo = Expediente(
         id=len(expedientes_db) + 1,
@@ -350,12 +415,66 @@ async def agregar_estudio(expediente_id: int, estudio: Estudio):
     for exp in expedientes_db:
         if exp.id == expediente_id:
             estudio.id = len(exp.estudios) + 1
-            exp.estudios.append(estudio)
+            exp.estudios.append(normalizar_estudio(estudio))
+            exp.estudios = preparar_estudios_requeridos(exp.estudios)
 
             # Actualizar tiene_preproceso
             exp.tiene_preproceso = calcular_preproceso(exp.estudios)
 
             return {"success": True, "message": "Estudio agregado", "data": exp}
+
+    raise HTTPException(status_code=404, detail="Expediente no encontrado")
+
+
+@app.put("/expedientes/{expediente_id}/estudios/{tipo_estudio}", response_model=Expediente)
+async def actualizar_estudio(expediente_id: int, tipo_estudio: str, payload: EstudioUpdate):
+    """Actualiza o crea un estudio dentro del expediente para control preoperatorio"""
+    tipo_normalizado = tipo_estudio.lower().strip()
+    if not tipo_normalizado:
+        raise HTTPException(status_code=400, detail="tipo_estudio invalido")
+
+    estado_normalizado = payload.estado.lower().strip()
+    if estado_normalizado not in ESTADOS_ESTUDIO:
+        raise HTTPException(status_code=400, detail="estado invalido para estudio")
+
+    for exp in expedientes_db:
+        if exp.id != expediente_id:
+            continue
+
+        estudio_existente = next(
+            (item for item in exp.estudios if item.tipo.lower().strip() == tipo_normalizado),
+            None
+        )
+
+        valido_final = payload.valido if payload.valido is not None else estado_normalizado == "validado"
+        if estado_normalizado == "validado":
+            valido_final = True
+
+        fecha_estudio = payload.fecha or date.today().isoformat()
+
+        if estudio_existente:
+            estudio_existente.estado = estado_normalizado
+            if payload.resultado is not None:
+                estudio_existente.resultado = payload.resultado
+            estudio_existente.fecha = fecha_estudio
+            estudio_existente.valido = valido_final
+            estudio_existente.observaciones = payload.observaciones
+        else:
+            exp.estudios.append(
+                Estudio(
+                    id=len(exp.estudios) + 1,
+                    tipo=tipo_normalizado,
+                    resultado=payload.resultado or "Pendiente",
+                    fecha=fecha_estudio,
+                    valido=valido_final,
+                    estado=estado_normalizado,
+                    observaciones=payload.observaciones
+                )
+            )
+
+        exp.estudios = preparar_estudios_requeridos(exp.estudios)
+        exp.tiene_preproceso = calcular_preproceso(exp.estudios)
+        return exp
 
     raise HTTPException(status_code=404, detail="Expediente no encontrado")
 

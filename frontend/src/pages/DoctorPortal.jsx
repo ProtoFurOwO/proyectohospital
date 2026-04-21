@@ -8,6 +8,20 @@ const TURNOS = [
   { key: 'noche', nombre: 'Noche' }
 ]
 
+const getEstadoLabel = (estado) => {
+  if (estado === 'asignado_directo') return 'Horario asignado'
+  if (estado === 'ajustado_jineteo') return 'Horario ajustado'
+  if (estado === 'reprogramado_jineteo') return 'Horario reasignado'
+  if (estado === 'reasignado_jineteo') return 'Horario reasignado'
+  if (estado === 'rechazado') return 'Sin disponibilidad'
+  if (estado === 'error_conexion') return 'Error de conexion'
+  if (!estado) return 'Sin estado'
+
+  return String(estado)
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 function DoctorPortal() {
   const [medicos, setMedicos] = useState([])
   const [medicoId, setMedicoId] = useState('')
@@ -87,12 +101,6 @@ function DoctorPortal() {
     return () => clearInterval(interval)
   }, [medicoId])
 
-  useEffect(() => {
-    if (medicoSeleccionado) {
-      setTurnoDeseado(medicoSeleccionado.turno)
-    }
-  }, [medicoSeleccionado])
-
   const solicitarTurno = async () => {
     if (!medicoId) {
       alert('Selecciona un doctor primero')
@@ -133,7 +141,7 @@ function DoctorPortal() {
   }
 
   const getEstadoBadgeColor = (estado) => {
-    if (estado === 'asignado_directo') return '#00ff88'
+    if (estado === 'asignado_directo') return '#14b8a6'
     if (estado === 'ajustado_jineteo') return '#ffa502'
     if (estado === 'reprogramado_jineteo') return '#ffa502'
     if (estado === 'reasignado_jineteo') return '#ffa502'
@@ -153,8 +161,8 @@ function DoctorPortal() {
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1rem' }}>
-        <section style={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: '10px', padding: '1rem' }}>
-          <h3 style={{ color: '#3742fa', marginBottom: '0.75rem' }}>Identificacion</h3>
+        <section style={{ background: '#ffffff', border: '1px solid #e6f5ff', borderRadius: '10px', padding: '1rem' }}>
+          <h3 style={{ color: '#0a78b5', marginBottom: '0.75rem' }}>Identificacion</h3>
 
           <select
             value={medicoId}
@@ -162,36 +170,35 @@ function DoctorPortal() {
             style={{
               width: '100%',
               padding: '0.6rem',
-              background: '#0f3460',
-              border: '1px solid #3742fa',
+              background: '#e6f5ff',
+              border: '1px solid #0a78b5',
               borderRadius: '6px',
-              color: '#fff',
+              color: '#1f435f',
               marginBottom: '0.75rem'
             }}
           >
             <option value="">Selecciona tu perfil de doctor...</option>
             {medicos.map((m) => (
               <option key={m.id} value={m.id}>
-                #{m.id} - {m.nombre} ({m.turno})
+                #{m.id} - {m.nombre}
               </option>
             ))}
           </select>
 
           {medicoSeleccionado && (
-            <div style={{ background: '#0f3460', borderRadius: '8px', padding: '0.75rem', fontSize: '0.9rem' }}>
+            <div style={{ background: '#e6f5ff', borderRadius: '8px', padding: '0.75rem', fontSize: '0.9rem' }}>
               <div style={{ marginBottom: '0.35rem', fontWeight: '600' }}>{medicoSeleccionado.nombre}</div>
               <div style={{ color: '#9aa' }}>Especialidad: {medicoSeleccionado.especialidad}</div>
-              <div style={{ color: '#9aa' }}>Turno actual: {medicoSeleccionado.turno}</div>
               <div style={{ color: '#9aa' }}>Operaciones hoy: {medicoSeleccionado.operaciones_hoy}/{medicoSeleccionado.max_operaciones}</div>
-              <div style={{ color: medicoSeleccionado.disponible ? '#00ff88' : '#ff4757', marginTop: '0.35rem' }}>
+              <div style={{ color: medicoSeleccionado.disponible ? '#14b8a6' : '#ff4757', marginTop: '0.35rem' }}>
                 {medicoSeleccionado.disponible ? 'Disponible' : 'Sin disponibilidad hoy'}
               </div>
             </div>
           )}
         </section>
 
-        <section style={{ background: '#16213e', border: '1px solid #0f3460', borderRadius: '10px', padding: '1rem' }}>
-          <h3 style={{ color: '#3742fa', marginBottom: '0.75rem' }}>Solicitar turno</h3>
+        <section style={{ background: '#ffffff', border: '1px solid #e6f5ff', borderRadius: '10px', padding: '1rem' }}>
+          <h3 style={{ color: '#0a78b5', marginBottom: '0.75rem' }}>Solicitar turno</h3>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', alignItems: 'end' }}>
             <div>
@@ -202,10 +209,10 @@ function DoctorPortal() {
                 style={{
                   width: '100%',
                   padding: '0.6rem',
-                  background: '#0f3460',
-                  border: '1px solid #3742fa',
+                  background: '#e6f5ff',
+                  border: '1px solid #0a78b5',
                   borderRadius: '6px',
-                  color: '#fff'
+                  color: '#1f435f'
                 }}
               >
                 {TURNOS.map((turno) => (
@@ -223,10 +230,10 @@ function DoctorPortal() {
                 style={{
                   width: '100%',
                   padding: '0.6rem',
-                  background: '#0f3460',
-                  border: '1px solid #3742fa',
+                  background: '#e6f5ff',
+                  border: '1px solid #0a78b5',
                   borderRadius: '6px',
-                  color: '#fff'
+                  color: '#1f435f'
                 }}
               />
             </div>
@@ -243,10 +250,10 @@ function DoctorPortal() {
                 style={{
                   width: '100%',
                   padding: '0.6rem',
-                  background: '#0f3460',
-                  border: '1px solid #3742fa',
+                  background: '#e6f5ff',
+                  border: '1px solid #0a78b5',
                   borderRadius: '6px',
-                  color: '#fff'
+                  color: '#1f435f'
                 }}
               />
             </div>
@@ -268,30 +275,30 @@ function DoctorPortal() {
                 padding: '0.9rem',
                 borderRadius: '8px',
                 border: `1px solid ${getEstadoBadgeColor(resultado.estado)}`,
-                background: resultado.success ? 'rgba(0,255,136,0.08)' : 'rgba(255,71,87,0.08)'
+                background: resultado.success ? 'rgba(20,184,166,0.12)' : 'rgba(255,71,87,0.08)'
               }}
             >
               <div style={{ marginBottom: '0.45rem', fontWeight: '700', color: getEstadoBadgeColor(resultado.estado) }}>
-                Estado: {resultado.estado}
+                Estado: {getEstadoLabel(resultado.estado)}
               </div>
-              <div style={{ color: '#d7dbe2' }}>{resultado.message}</div>
+              <div style={{ color: '#36546f' }}>{resultado.message}</div>
               {resultado.medico_asignado && (
-                <div style={{ marginTop: '0.45rem', fontSize: '0.9rem', color: '#9fb3ff' }}>
+                <div style={{ marginTop: '0.45rem', fontSize: '0.9rem', color: '#6d8cb0' }}>
                   Asignado: {resultado.medico_asignado.nombre} ({resultado.medico_asignado.especialidad})
                 </div>
               )}
               {resultado.fecha_solicitada && (
-                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#6d87a2' }}>
                   Fecha solicitada: {resultado.fecha_solicitada}
                 </div>
               )}
               {resultado.fecha_asignada && (
-                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#6d87a2' }}>
                   Fecha asignada: {resultado.fecha_asignada}
                 </div>
               )}
               {resultado.turno_final && (
-                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#8ea3d1' }}>
+                <div style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#6d87a2' }}>
                   Turno final aplicado: {resultado.turno_final}
                 </div>
               )}
@@ -299,13 +306,13 @@ function DoctorPortal() {
           )}
 
           <div style={{ marginTop: '1rem' }}>
-            <h4 style={{ marginBottom: '0.5rem', color: '#9fb3ff' }}>Disponibilidad por turno</h4>
+            <h4 style={{ marginBottom: '0.5rem', color: '#6d8cb0' }}>Disponibilidad por turno</h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem' }}>
               {disponibilidad && Object.entries(disponibilidad.turnos || {}).map(([turno, info]) => (
-                <div key={turno} style={{ background: '#0f3460', borderRadius: '8px', padding: '0.7rem' }}>
+                <div key={turno} style={{ background: '#e6f5ff', borderRadius: '8px', padding: '0.7rem' }}>
                   <div style={{ fontWeight: '700', marginBottom: '0.3rem' }}>{turno}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#b7c2d8' }}>Disponibles: {info.disponibles}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#7f8aa2' }}>Total: {info.total_medicos}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#5e7791' }}>Disponibles: {info.disponibles}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#607890' }}>Total: {info.total_medicos}</div>
                 </div>
               ))}
             </div>
@@ -313,8 +320,8 @@ function DoctorPortal() {
         </section>
       </div>
 
-      <section style={{ marginTop: '1rem', background: '#16213e', border: '1px solid #0f3460', borderRadius: '10px', padding: '1rem' }}>
-        <h3 style={{ color: '#3742fa', marginBottom: '0.75rem' }}>Historial del doctor</h3>
+      <section style={{ marginTop: '1rem', background: '#ffffff', border: '1px solid #e6f5ff', borderRadius: '10px', padding: '1rem' }}>
+        <h3 style={{ color: '#0a78b5', marginBottom: '0.75rem' }}>Historial del doctor</h3>
 
         {!medicoId && <div style={{ color: '#777' }}>Selecciona un doctor para ver su historial.</div>}
 
@@ -325,7 +332,7 @@ function DoctorPortal() {
         {medicoId && historial.length > 0 && (
           <div style={{ display: 'grid', gap: '0.6rem' }}>
             {historial.map((item) => (
-              <div key={item.id} style={{ background: '#0f3460', borderRadius: '8px', padding: '0.75rem' }}>
+              <div key={item.id} style={{ background: '#e6f5ff', borderRadius: '8px', padding: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                   <strong>Solicitud #{item.id}</strong>
                   <span style={{
@@ -336,22 +343,22 @@ function DoctorPortal() {
                     fontSize: '0.75rem',
                     fontWeight: '700'
                   }}>
-                    {item.estado}
+                    {getEstadoLabel(item.estado)}
                   </span>
                 </div>
-                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Turno solicitado: {item.turno_solicitado}</div>
-                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Turno final: {item.turno_final || item.turno_solicitado}</div>
-                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Fecha solicitada: {item.fecha_solicitada || 'N/A'}</div>
-                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Fecha asignada: {item.fecha_asignada || 'Pendiente'}</div>
-                <div style={{ color: '#b8c2d8', fontSize: '0.88rem' }}>Asignado: {item.medico_asignado_nombre || 'Ninguno'}</div>
-                <div style={{ color: '#8b96ae', fontSize: '0.8rem', marginTop: '0.2rem' }}>{item.motivo}</div>
+                <div style={{ color: '#5e7791', fontSize: '0.88rem' }}>Turno solicitado: {item.turno_solicitado}</div>
+                <div style={{ color: '#5e7791', fontSize: '0.88rem' }}>Turno final: {item.turno_final || item.turno_solicitado}</div>
+                <div style={{ color: '#5e7791', fontSize: '0.88rem' }}>Fecha solicitada: {item.fecha_solicitada || 'N/A'}</div>
+                <div style={{ color: '#5e7791', fontSize: '0.88rem' }}>Fecha asignada: {item.fecha_asignada || 'Pendiente'}</div>
+                <div style={{ color: '#5e7791', fontSize: '0.88rem' }}>Asignado: {item.medico_asignado_nombre || 'Ninguno'}</div>
+                <div style={{ color: '#68819a', fontSize: '0.8rem', marginTop: '0.2rem' }}>{item.motivo}</div>
               </div>
             ))}
           </div>
         )}
 
         {medicoId && resumen && (
-          <div style={{ marginTop: '0.9rem', color: '#8b96ae', fontSize: '0.85rem' }}>
+          <div style={{ marginTop: '0.9rem', color: '#68819a', fontSize: '0.85rem' }}>
             Estado actual: {resumen.puede_operar_hoy ? 'Puede operar hoy' : 'Sin disponibilidad hoy'} |
             {' '}Operaciones: {resumen.operaciones_hoy}/{resumen.max_operaciones} |
             {' '}Dias sin operar: {resumen.dias_sin_operar}
