@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 const API_EXPEDIENTES = 'http://localhost:8002'
 const API_CITAS = 'http://localhost:8001'
 const API_PERSONAL = 'http://localhost:8005'
+const API_QUIROFANOS = 'http://localhost:8003'
 
 const ESTUDIOS_REQUERIDOS = ['laboratorio', 'cardiograma', 'imagen']
 const ESTADOS_ESTUDIO_FALLBACK = ['pendiente', 'solicitado', 'realizado', 'validado', 'rechazado']
@@ -58,9 +59,13 @@ const buildInitialForm = (numeroExpediente) => ({
   diagnostico_preoperatorio: '',
   tipo_cirugia_complejidad: 'Menor',
   tipo_cirugia_urgencia: 'Electiva',
-  division_quirurgica: 'Cirugia General',
+  division_quirurgica: '',
   medico_id: '',
   anestesiologo_id: '',
+  turno_asignado: '',
+  hora_inicio_cirugia: '',
+  hora_fin_cirugia: '',
+  quirofano_id: '',
   observaciones: '',
   alergias_texto: ''
 })
@@ -68,6 +73,13 @@ const buildInitialForm = (numeroExpediente) => ({
 const extractDate = (value) => {
   if (!value) return ''
   return String(value).split('T')[0]
+}
+
+const formatTurno = (turno) => {
+  if (turno === 'manana') return 'Manana'
+  if (turno === 'tarde') return 'Tarde'
+  if (turno === 'noche') return 'Noche'
+  return turno || 'N/A'
 }
 
 const prettyTipo = (tipo) => {
@@ -89,12 +101,6 @@ const getEstadoColor = (estado) => {
   if (estado === 'solicitado') return '#1e90ff'
   if (estado === 'rechazado') return '#ff4757'
   return '#ffa502'
-}
-
-const findAnestesiologoByNombre = (items, nombre) => {
-  if (!nombre) return null
-  const target = String(nombre).trim().toLowerCase()
-  return items.find((item) => String(item.nombre || '').trim().toLowerCase() === target) || null
 }
 
 const getStudyByTipo = (expediente, tipo) => {
@@ -152,8 +158,8 @@ export default function ExpedientesAdmin() {
   const [expedientes, setExpedientes] = useState([])
   const [citasPendientes, setCitasPendientes] = useState([])
   const [catalogos, setCatalogos] = useState(null)
-  const [medicos, setMedicos] = useState([])
   const [anestesiologos, setAnestesiologos] = useState([])
+  const [slotsFecha, setSlotsFecha] = useState([])
   const [proximoNumeroExpediente, setProximoNumeroExpediente] = useState('EXP-1001')
   const [form, setForm] = useState(() => buildInitialForm('EXP-1001'))
   const [resultado, setResultado] = useState(null)
@@ -171,7 +177,6 @@ export default function ExpedientesAdmin() {
       fetch(`${API_EXPEDIENTES}/expedientes`),
       fetch(`${API_EXPEDIENTES}/expedientes/catalogos`),
       fetch(`${API_CITAS}/citas?estado=programada`),
-      fetch(`${API_PERSONAL}/personal/medicos?disponible=true`),
       fetch(`${API_PERSONAL}/personal/apoyo?rol=anestesiologo`)
     ])
 
@@ -202,11 +207,7 @@ export default function ExpedientesAdmin() {
       }
 
       if (requests[3].status === 'fulfilled' && requests[3].value.ok) {
-        setMedicos(await requests[3].value.json())
-      }
-
-      if (requests[4].status === 'fulfilled' && requests[4].value.ok) {
-        setAnestesiologos(await requests[4].value.json())
+        setAnestesiologos(await requests[3].value.json())
       }
     } catch (error) {
       setResultado({ success: false, message: 'Error cargando datos de servicios.' })
@@ -219,12 +220,31 @@ export default function ExpedientesAdmin() {
     cargarDatos()
   }, [])
 
+  const cargarSlotsPorFecha = async (fechaISO) => {
+    if (!fechaISO) {
+      setSlotsFecha([])
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_PERSONAL}/personal/portal/slots?fecha=${fechaISO}`)
+      if (!response.ok) {
+        setSlotsFecha([])
+        return
+      }
+
+      const data = await response.json()
+      setSlotsFecha(data.slots || [])
+    } catch (error) {
+      setSlotsFecha([])
+    }
+  }
+
   const citasDisponibles = useMemo(() => {
     const pacientesConExpediente = new Set(expedientes.map((item) => String(item.paciente_id)))
 
     return citasPendientes
       .filter((cita) => cita.estado === 'programada')
-      .filter((cita) => cita.requiere_expediente !== false)
       .filter((cita) => !pacientesConExpediente.has(String(cita.paciente_id)))
       .sort((a, b) => new Date(a.fecha_cita) - new Date(b.fecha_cita))
   }, [citasPendientes, expedientes])
@@ -240,31 +260,57 @@ export default function ExpedientesAdmin() {
     })
   }, [expedientes, filtroTexto])
 
+  const citaSeleccionada = useMemo(
+    () => citasDisponibles.find((item) => String(item.id) === String(form.cita_id)) || null,
+    [citasDisponibles, form.cita_id]
+  )
+
   const medicosFiltrados = useMemo(() => {
-    let candidatos = medicos
+    if (!form.division_quirurgica) return []
 
-    if (form.cita_id) {
-      const cita = citasDisponibles.find((item) => String(item.id) === String(form.cita_id))
-      if (cita?.turno) {
-        candidatos = candidatos.filter((item) => item.turno === cita.turno)
+    const slotsOcupados = slotsFecha.filter(
+      (slot) => slot.ocupado && slot.medico_id && slot.medico_nombre
+    )
+
+    const compatibles = slotsOcupados.filter((slot) => medicoCompatibleConDivision(
+      { especialidad: slot.especialidad },
+      form.division_quirurgica
+    ))
+
+    const unicos = new Map()
+
+    compatibles.forEach((slot) => {
+      const key = String(slot.medico_id)
+      if (!unicos.has(key)) {
+        unicos.set(key, {
+          id: slot.medico_id,
+          nombre: slot.medico_nombre,
+          especialidad: slot.especialidad || 'General',
+          turno: slot.turno,
+          bloque: slot.bloque,
+          hora_inicio: slot.hora_inicio,
+          hora_fin: slot.hora_fin,
+          quirofano_id: slot.quirofano_id
+        })
       }
-    }
+    })
 
-    const filtrados = candidatos.filter((item) => medicoCompatibleConDivision(item, form.division_quirurgica))
-    if (filtrados.length > 0) return filtrados
+    return [...unicos.values()].sort((a, b) => (
+      a.turno.localeCompare(b.turno) ||
+      a.hora_inicio.localeCompare(b.hora_inicio) ||
+      a.id - b.id
+    ))
+  }, [slotsFecha, form.division_quirurgica])
 
-    const cita = citasDisponibles.find((item) => String(item.id) === String(form.cita_id))
-    if (cita?.turno) return candidatos
-    return medicos
-  }, [medicos, form.cita_id, form.division_quirurgica, citasDisponibles])
+  const medicoProgramadoSeleccionado = useMemo(
+    () => medicosFiltrados.find((item) => String(item.id) === String(form.medico_id)) || null,
+    [medicosFiltrados, form.medico_id]
+  )
 
   const anestesiologosFiltrados = useMemo(() => {
-    if (!form.cita_id) return anestesiologos
-    const cita = citasDisponibles.find((item) => String(item.id) === String(form.cita_id))
-    if (!cita?.turno) return anestesiologos
-
-    return anestesiologos.filter((item) => item.turno === cita.turno)
-  }, [anestesiologos, form.cita_id, citasDisponibles])
+    if (!form.turno_asignado) return anestesiologos
+    return anestesiologos.filter((item) => item.turno === form.turno_asignado)
+  }, [anestesiologos, form.turno_asignado])
 
   const estadosEstudioOptions = catalogos?.estados_estudio || ESTADOS_ESTUDIO_FALLBACK
 
@@ -273,9 +319,32 @@ export default function ExpedientesAdmin() {
       const next = { ...prev, [field]: value }
 
       if (field === 'division_quirurgica') {
-        const medicoActual = medicos.find((item) => String(item.id) === String(prev.medico_id))
-        if (medicoActual && !medicoCompatibleConDivision(medicoActual, value)) {
-          next.medico_id = ''
+        next.medico_id = ''
+        next.turno_asignado = ''
+        next.hora_inicio_cirugia = ''
+        next.hora_fin_cirugia = ''
+        next.quirofano_id = ''
+        next.anestesiologo_id = ''
+      }
+
+      if (field === 'medico_id') {
+        const medicoProgramado = medicosFiltrados.find((item) => String(item.id) === String(value))
+
+        if (medicoProgramado) {
+          next.turno_asignado = medicoProgramado.turno
+          next.hora_inicio_cirugia = medicoProgramado.hora_inicio
+          next.hora_fin_cirugia = medicoProgramado.hora_fin
+          next.quirofano_id = String(medicoProgramado.quirofano_id)
+
+          const anestesiaActual = anestesiologos.find((item) => String(item.id) === String(prev.anestesiologo_id))
+          if (anestesiaActual && anestesiaActual.turno !== medicoProgramado.turno) {
+            next.anestesiologo_id = ''
+          }
+        } else {
+          next.turno_asignado = ''
+          next.hora_inicio_cirugia = ''
+          next.hora_fin_cirugia = ''
+          next.quirofano_id = ''
         }
       }
 
@@ -283,19 +352,20 @@ export default function ExpedientesAdmin() {
     })
   }
 
-  const onCitaChange = (value) => {
+  const onCitaChange = async (value) => {
     if (!value) {
       setForm((prev) => ({
         ...buildInitialForm(proximoNumeroExpediente),
         sexo: prev.sexo
       }))
+      setSlotsFecha([])
       return
     }
 
     const cita = citasDisponibles.find((item) => String(item.id) === String(value))
     if (!cita) return
 
-    const anestesia = findAnestesiologoByNombre(anestesiologos, cita.responsable_anestesia)
+    await cargarSlotsPorFecha(extractDate(cita.fecha_cita))
 
     setForm((prev) => ({
       ...prev,
@@ -304,11 +374,15 @@ export default function ExpedientesAdmin() {
       nombre: cita.paciente_nombre || '',
       fecha_cirugia: extractDate(cita.fecha_cita),
       diagnostico_preoperatorio: cita.tipo_cirugia || '',
-      division_quirurgica: cita.division_quirurgica || prev.division_quirurgica,
+      division_quirurgica: cita.division_quirurgica || '',
       tipo_cirugia_complejidad: cita.complejidad_evento || prev.tipo_cirugia_complejidad,
       tipo_cirugia_urgencia: cita.urgencia_intervencion || prev.tipo_cirugia_urgencia,
-      medico_id: cita.medico_id ? String(cita.medico_id) : prev.medico_id,
-      anestesiologo_id: anestesia ? String(anestesia.id) : prev.anestesiologo_id
+      medico_id: '',
+      anestesiologo_id: '',
+      turno_asignado: '',
+      hora_inicio_cirugia: '',
+      hora_fin_cirugia: '',
+      quirofano_id: ''
     }))
   }
 
@@ -318,7 +392,7 @@ export default function ExpedientesAdmin() {
       .map((item) => item.trim())
       .filter(Boolean)
 
-    const medicoSeleccionado = medicos.find((item) => String(item.id) === String(form.medico_id))
+    const medicoSeleccionado = medicosFiltrados.find((item) => String(item.id) === String(form.medico_id))
     const anestesiologoSeleccionado = anestesiologos.find(
       (item) => String(item.id) === String(form.anestesiologo_id)
     )
@@ -326,6 +400,7 @@ export default function ExpedientesAdmin() {
     const fechaBaseEstudio = form.fecha_ingreso_hospital || todayISO()
 
     return {
+      cita_id: form.cita_id ? Number(form.cita_id) : null,
       paciente_id: Number(form.paciente_id),
       numero_expediente_clinico: form.numero_expediente_clinico,
       nombre: form.nombre.trim(),
@@ -344,6 +419,10 @@ export default function ExpedientesAdmin() {
       responsable_cirugia: medicoSeleccionado?.nombre || null,
       especialidad_quirurgica: medicoSeleccionado?.especialidad || form.division_quirurgica,
       responsable_anestesia: anestesiologoSeleccionado?.nombre || null,
+      turno_asignado: form.turno_asignado || null,
+      hora_inicio_cirugia: form.hora_inicio_cirugia || null,
+      hora_fin_cirugia: form.hora_fin_cirugia || null,
+      quirofano_id: form.quirofano_id ? Number(form.quirofano_id) : null,
       observaciones: form.observaciones.trim() || null,
       alergias,
       cirugia_programada: true,
@@ -359,6 +438,35 @@ export default function ExpedientesAdmin() {
     }
   }
 
+  const sincronizarCitaQuirurgica = async (payloadExpediente) => {
+    if (!payloadExpediente.cita_id) return
+
+    const horaInicio = payloadExpediente.hora_inicio_cirugia || '08:00'
+    const fechaBase = payloadExpediente.fecha_cirugia || extractDate(citaSeleccionada?.fecha_cita) || todayISO()
+
+    try {
+      const response = await fetch(`${API_CITAS}/citas/${payloadExpediente.cita_id}/asignacion-quirurgica`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          medico_id: form.medico_id ? Number(form.medico_id) : null,
+          medico_nombre: payloadExpediente.responsable_cirugia,
+          fecha_cita: `${fechaBase}T${horaInicio}:00`,
+          turno: payloadExpediente.turno_asignado,
+          quirofano_id: payloadExpediente.quirofano_id,
+          tipo_cirugia: payloadExpediente.diagnostico_preoperatorio,
+          division_quirurgica: payloadExpediente.division_quirurgica,
+          complejidad_evento: payloadExpediente.tipo_cirugia_complejidad,
+          urgencia_intervencion: payloadExpediente.tipo_cirugia_urgencia,
+          responsable_anestesia: payloadExpediente.responsable_anestesia
+        })
+      })
+      return response.ok
+    } catch (_error) {
+      return false
+    }
+  }
+
   const guardarExpediente = async () => {
     if (!form.cita_id) {
       setResultado({
@@ -368,10 +476,18 @@ export default function ExpedientesAdmin() {
       return
     }
 
-    if (!form.paciente_id || !form.nombre || !form.medico_id || !form.anestesiologo_id) {
+    if (!form.paciente_id || !form.nombre || !form.division_quirurgica || !form.medico_id || !form.anestesiologo_id) {
       setResultado({
         success: false,
-        message: 'Completa paciente, medico y anestesiologo para crear el expediente.'
+        message: 'Selecciona tipo de cirugia, medico programado y anestesiologo para crear el expediente.'
+      })
+      return
+    }
+
+    if (!form.turno_asignado || !form.hora_inicio_cirugia || !form.hora_fin_cirugia || !form.quirofano_id) {
+      setResultado({
+        success: false,
+        message: 'El medico elegido debe tener turno, hora y quirofano asignados en la programacion.'
       })
       return
     }
@@ -380,10 +496,11 @@ export default function ExpedientesAdmin() {
     setResultado(null)
 
     try {
+      const payload = buildPayload()
       const response = await fetch(`${API_EXPEDIENTES}/expedientes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildPayload())
+        body: JSON.stringify(payload)
       })
 
       const data = await response.json()
@@ -392,9 +509,13 @@ export default function ExpedientesAdmin() {
         return
       }
 
+      const citaSincronizada = await sincronizarCitaQuirurgica(payload)
+
       setResultado({
         success: true,
-        message: `Expediente ${data.numero_expediente_clinico} creado. Abre Gestion de estudios para registrar avances.`
+        message: citaSincronizada
+          ? `Expediente ${data.numero_expediente_clinico} creado y cita sincronizada con turno/quirofano.`
+          : `Expediente ${data.numero_expediente_clinico} creado. No se pudo sincronizar la cita en este intento.`
       })
 
       setExpedienteEstudios(data)
@@ -422,6 +543,74 @@ export default function ExpedientesAdmin() {
     } catch (error) {
       setResultado({ success: false, message: 'No se pudo validar el expediente seleccionado.' })
       return null
+    }
+  }
+
+  const mandarACirugia = async (expediente) => {
+    const validacion = await validarExpediente(expediente.numero_expediente_clinico)
+
+    if (!validacion?.puede_operar) {
+      setResultado({
+        success: false,
+        message: `No se puede enviar a cirugia. Faltan estudios para ${expediente.nombre}.`
+      })
+      return
+    }
+
+    if (!expediente.quirofano_id) {
+      setResultado({
+        success: false,
+        message: `El expediente ${expediente.numero_expediente_clinico} no tiene quirofano asignado.`
+      })
+      return
+    }
+
+    try {
+      const iniciarResponse = await fetch(
+        `${API_QUIROFANOS}/quirofanos/${expediente.quirofano_id}/iniciar`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            medico_id: 0,
+            medico_nombre: expediente.responsable_cirugia || 'Medico asignado',
+            especialidad: expediente.especialidad_quirurgica || expediente.division_quirurgica || 'General',
+            es_urgencia: expediente.tipo_cirugia_urgencia === 'Urgencia'
+          })
+        }
+      )
+
+      const iniciarData = await safeJsonResponse(iniciarResponse)
+      if (!iniciarResponse.ok) {
+        setResultado({
+          success: false,
+          message: iniciarData?.detail || iniciarData?.message || 'No se pudo activar el quirofano en dashboard.'
+        })
+        return
+      }
+
+      const marcarExpedienteResponse = await fetch(
+        `${API_EXPEDIENTES}/expedientes/${expediente.id}/enviar-cirugia`,
+        { method: 'POST' }
+      )
+      const marcarData = await safeJsonResponse(marcarExpedienteResponse)
+
+      if (!marcarExpedienteResponse.ok) {
+        setResultado({
+          success: false,
+          message: marcarData?.detail || 'No se pudo marcar el expediente como enviado a cirugia.'
+        })
+        return
+      }
+
+      setResultado({
+        success: true,
+        message: `${expediente.nombre} enviado a cirugia en Q${expediente.quirofano_id}. Dashboard actualizado.`
+      })
+
+      await cargarDatos()
+    } catch (error) {
+      setResultado({ success: false, message: 'Error de conexion al enviar paciente a cirugia.' })
     }
   }
 
@@ -531,7 +720,7 @@ export default function ExpedientesAdmin() {
     <div>
       <h2 style={{ marginBottom: '0.75rem', fontSize: '1.5rem' }}>Expedientes Admin</h2>
       <p style={{ color: '#888', marginBottom: '1.25rem' }}>
-        Paso 2: registra expediente y controla estudios antes de la cirugia.
+        Paso 2: selecciona cita, define tipo de cirugia, asigna medico programado y controla estudios antes de enviar a quirofano.
       </p>
 
       <div className="admin-layout-grid">
@@ -653,12 +842,13 @@ export default function ExpedientesAdmin() {
 
             <div className="admin-grid-2">
               <div className="admin-field-group">
-                <label className="admin-label">Division quirurgica</label>
+                <label className="admin-label">Tipo de cirugia / Division</label>
                 <select
                   value={form.division_quirurgica}
                   onChange={(e) => onFieldChange('division_quirurgica', e.target.value)}
                   className="sql-input admin-field"
                 >
+                  <option value="">Selecciona tipo de cirugia...</option>
                   {divisionOptions.map((item) => (
                     <option key={item} value={item}>
                       {item}
@@ -667,21 +857,45 @@ export default function ExpedientesAdmin() {
                 </select>
               </div>
               <div className="admin-field-group">
-                <label className="admin-label">Cirujano responsable</label>
+                <label className="admin-label">Cirujano programado disponible</label>
                 <select
                   value={form.medico_id}
                   onChange={(e) => onFieldChange('medico_id', e.target.value)}
                   className="sql-input admin-field"
+                  disabled={!form.division_quirurgica}
                 >
                   <option value="">Selecciona cirujano...</option>
                   {medicosFiltrados.map((item) => (
                     <option key={item.id} value={item.id}>
-                      #{item.id} - {item.nombre}
+                      #{item.id} - {item.nombre} | {formatTurno(item.turno)} {item.hora_inicio}-{item.hora_fin} | Q{item.quirofano_id}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
+
+            {form.division_quirurgica && medicosFiltrados.length === 0 && (
+              <div style={{ color: '#ff9aa4', fontSize: '0.85rem' }}>
+                No hay medicos con horario asignado para este tipo de cirugia y fecha.
+              </div>
+            )}
+
+            {medicoProgramadoSeleccionado && (
+              <div style={{ background: '#e6f5ff', borderRadius: '8px', padding: '0.7rem' }}>
+                <div style={{ color: '#0a78b5', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  Programacion del cirujano seleccionado
+                </div>
+                <div style={{ color: '#1f435f', fontSize: '0.86rem' }}>
+                  Turno: {formatTurno(medicoProgramadoSeleccionado.turno)}
+                </div>
+                <div style={{ color: '#1f435f', fontSize: '0.86rem' }}>
+                  Hora: {medicoProgramadoSeleccionado.hora_inicio} - {medicoProgramadoSeleccionado.hora_fin}
+                </div>
+                <div style={{ color: '#1f435f', fontSize: '0.86rem' }}>
+                  Quirofano: Q{medicoProgramadoSeleccionado.quirofano_id}
+                </div>
+              </div>
+            )}
 
             <div className="admin-grid-2">
               <div className="admin-field-group">
@@ -720,6 +934,7 @@ export default function ExpedientesAdmin() {
                 value={form.anestesiologo_id}
                 onChange={(e) => onFieldChange('anestesiologo_id', e.target.value)}
                 className="sql-input admin-field"
+                disabled={!form.turno_asignado}
               >
                 <option value="">Selecciona anestesiologo...</option>
                 {anestesiologosFiltrados.map((item) => (
@@ -805,6 +1020,15 @@ export default function ExpedientesAdmin() {
                       <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
                         Dx: {item.diagnostico_preoperatorio || 'Sin diagnostico'}
                       </div>
+                      <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
+                        Cirujano: {item.responsable_cirugia || 'Pendiente'} | Anestesia: {item.responsable_anestesia || 'Pendiente'}
+                      </div>
+                      <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
+                        Turno: {formatTurno(item.turno_asignado)} | Hora: {item.hora_inicio_cirugia || '--:--'}-{item.hora_fin_cirugia || '--:--'} | Quirofano: {item.quirofano_id ? `Q${item.quirofano_id}` : 'Pendiente'}
+                      </div>
+                      <div style={{ color: '#5e7791', fontSize: '0.8rem' }}>
+                        Estado cirugia: {item.estado_cirugia || 'pendiente'}
+                      </div>
                       <div style={{ color: semaforo.color, fontSize: '0.8rem', fontWeight: 700, marginTop: '0.35rem' }}>
                         {semaforo.label}
                       </div>
@@ -815,6 +1039,13 @@ export default function ExpedientesAdmin() {
                       </button>
                       <button className="btn btn-primary" onClick={() => validarExpediente(item.numero_expediente_clinico)}>
                         Validar preop
+                      </button>
+                      <button
+                        className="btn btn-success"
+                        onClick={() => mandarACirugia(item)}
+                        disabled={!item.quirofano_id || item.estado_cirugia === 'enviada_a_quirofano'}
+                      >
+                        {item.estado_cirugia === 'enviada_a_quirofano' ? 'Enviado a cirugia' : 'Mandar a cirugia'}
                       </button>
                     </div>
                   </div>

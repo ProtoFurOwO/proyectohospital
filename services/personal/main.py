@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 app = FastAPI(
     title="Servicio de Personal Medico",
@@ -52,8 +52,10 @@ class SolicitudTurnoRequest(BaseModel):
     medico_id: int
     turno_deseado: str
     fecha_deseada: Optional[str] = None
+    bloque_deseado: Optional[str] = None
     quirofano_id: Optional[int] = None
     notas: Optional[str] = None
+    origen: str = "portal"
 
 class SolicitudTurno(BaseModel):
     id: int
@@ -64,12 +66,16 @@ class SolicitudTurno(BaseModel):
     turno_final: Optional[str] = None
     fecha_solicitada: str
     fecha_asignada: Optional[str] = None
+    bloque: Optional[str] = None
+    hora_inicio: Optional[str] = None
+    hora_fin: Optional[str] = None
     estado: str
     motivo: str
     especialidad: str
     medico_asignado_id: Optional[int] = None
     medico_asignado_nombre: Optional[str] = None
     quirofano_id: Optional[int] = None
+    origen: str = "portal"
 
 # Datos
 ESPECIALIDADES = [
@@ -83,6 +89,42 @@ TURNO_HORA_INICIO = {
     "tarde": 16,
     "noche": 0
 }
+
+BLOQUES_POR_TURNO = {
+    "manana": [
+        {"bloque": "08:00", "hora_inicio": "08:00", "hora_fin": "12:00"},
+        {"bloque": "12:00", "hora_inicio": "12:00", "hora_fin": "16:00"}
+    ],
+    "tarde": [
+        {"bloque": "16:00", "hora_inicio": "16:00", "hora_fin": "20:00"},
+        {"bloque": "20:00", "hora_inicio": "20:00", "hora_fin": "00:00"}
+    ],
+    "noche": [
+        {"bloque": "00:00", "hora_inicio": "00:00", "hora_fin": "04:00"},
+        {"bloque": "04:00", "hora_inicio": "04:00", "hora_fin": "08:00"}
+    ]
+}
+
+QUIROFANOS_DEMO = [
+    {"id": idx, "nombre": f"Q{idx}"}
+    for idx in range(1, 31)
+]
+
+def construir_mapeo_quirofanos() -> dict:
+    """Distribuye 30 quirofanos: 10 por turno, 5 por bloque."""
+    mapeo = {}
+    actual = 1
+
+    for turno in TURNOS:
+        mapeo[turno] = {}
+        for bloque in BLOQUES_POR_TURNO[turno]:
+            ids = list(range(actual, actual + 5))
+            mapeo[turno][bloque["bloque"]] = ids
+            actual += 5
+
+    return mapeo
+
+QUIROFANOS_POR_TURNO_BLOQUE = construir_mapeo_quirofanos()
 
 medicos_db: List[Medico] = []
 personal_apoyo_db: List[PersonalApoyo] = []
@@ -194,23 +236,88 @@ def medico_tiene_cupo_en_fecha(medico: Medico, fecha_obj: date) -> bool:
     fecha_iso = fecha_obj.isoformat()
     return operaciones_programadas_en_fecha(medico.id, fecha_iso) < medico.max_operaciones
 
-def buscar_fecha_disponible(medico: Medico, fecha_inicio: date, dias_maximos: int = 14) -> Optional[date]:
-    for offset in range(0, dias_maximos + 1):
-        fecha_candidata = fecha_inicio + timedelta(days=offset)
-        if medico_tiene_cupo_en_fecha(medico, fecha_candidata):
-            return fecha_candidata
-    return None
+def bloques_turno(turno: str) -> List[dict]:
+    return BLOQUES_POR_TURNO.get(turno, [])
 
-def build_fecha_cita_iso(fecha_iso: str, turno: str) -> str:
-    hora_inicio = TURNO_HORA_INICIO.get(turno, 8)
-    fecha_obj = datetime.fromisoformat(fecha_iso)
-    fecha_hora = fecha_obj.replace(hour=hora_inicio, minute=0, second=0, microsecond=0)
-    return fecha_hora.isoformat()
+def bloque_valido_para_turno(turno: str, bloque: str) -> bool:
+    return any(item["bloque"] == bloque for item in bloques_turno(turno))
 
-def hora_rango_por_turno(turno: str) -> tuple[str, str]:
+def hora_rango_por_bloque(turno: str, bloque: str) -> tuple[str, str]:
+    for item in bloques_turno(turno):
+        if item["bloque"] == bloque:
+            return item["hora_inicio"], item["hora_fin"]
+
     inicio = TURNO_HORA_INICIO.get(turno, 8)
     fin = (inicio + 4) % 24
     return f"{inicio:02d}:00", f"{fin:02d}:00"
+
+def build_fecha_cita_iso(fecha_iso: str, hora_inicio: str) -> str:
+    hora_int = int(hora_inicio.split(":")[0])
+    fecha_obj = datetime.fromisoformat(fecha_iso)
+    fecha_hora = fecha_obj.replace(hour=hora_int, minute=0, second=0, microsecond=0)
+    return fecha_hora.isoformat()
+
+def solicitud_esta_activa(solicitud: SolicitudTurno) -> bool:
+    return solicitud.estado in {"asignado_directo", "asignado_admin", "reprogramado_jineteo", "ajustado_jineteo"}
+
+def construir_slots_demo(fecha_iso: str, turno: Optional[str] = None) -> List[dict]:
+    turnos = [turno] if turno else TURNOS
+    slots = []
+    orden_turno = {key: idx for idx, key in enumerate(TURNOS)}
+
+    for turno_item in turnos:
+        for bloque in bloques_turno(turno_item):
+            ids_quirofano = QUIROFANOS_POR_TURNO_BLOQUE.get(turno_item, {}).get(bloque["bloque"], [])
+
+            for quirofano_id in ids_quirofano:
+                quirofano = {"id": quirofano_id, "nombre": f"Q{quirofano_id}"}
+                asignada = None
+
+                for solicitud in solicitudes_turno_db:
+                    if not solicitud_esta_activa(solicitud):
+                        continue
+                    if solicitud.fecha_asignada != fecha_iso:
+                        continue
+                    if (solicitud.turno_final or solicitud.turno_solicitado) != turno_item:
+                        continue
+                    if solicitud.bloque != bloque["bloque"]:
+                        continue
+                    if solicitud.quirofano_id != quirofano["id"]:
+                        continue
+
+                    asignada = solicitud
+                    break
+
+                slot = {
+                    "slot_id": f"{fecha_iso}-{turno_item}-{bloque['bloque']}-{quirofano['id']}",
+                    "fecha": fecha_iso,
+                    "turno": turno_item,
+                    "bloque": bloque["bloque"],
+                    "hora_inicio": bloque["hora_inicio"],
+                    "hora_fin": bloque["hora_fin"],
+                    "quirofano_id": quirofano["id"],
+                    "quirofano_nombre": quirofano["nombre"],
+                    "ocupado": asignada is not None,
+                    "source": "portal"
+                }
+
+                if asignada:
+                    slot.update({
+                        "solicitud_id": asignada.id,
+                        "medico_id": asignada.medico_asignado_id,
+                        "medico_nombre": asignada.medico_asignado_nombre,
+                        "especialidad": asignada.especialidad,
+                        "estado": asignada.estado,
+                        "motivo": asignada.motivo,
+                        "source": getattr(asignada, "origen", "portal")
+                    })
+
+                slots.append(slot)
+
+    return sorted(
+        slots,
+        key=lambda item: (orden_turno.get(item["turno"], 99), item["hora_inicio"], item["quirofano_id"])
+    )
 
 def candidatos_jineteo(turno: str, especialidad: Optional[str], excluir_medico_id: Optional[int] = None) -> List[Medico]:
     candidatos = [
@@ -236,10 +343,14 @@ def registrar_solicitud_turno(
     turno_final: str,
     fecha_solicitada: str,
     fecha_asignada: Optional[str],
+    bloque: Optional[str],
+    hora_inicio: Optional[str],
+    hora_fin: Optional[str],
     estado: str,
     motivo: str,
     medico_asignado: Optional[Medico],
-    quirofano_id: Optional[int]
+    quirofano_id: Optional[int],
+    origen: str
 ) -> SolicitudTurno:
     global solicitud_turno_id_seq
 
@@ -252,12 +363,16 @@ def registrar_solicitud_turno(
         turno_final=turno_final,
         fecha_solicitada=fecha_solicitada,
         fecha_asignada=fecha_asignada,
+        bloque=bloque,
+        hora_inicio=hora_inicio,
+        hora_fin=hora_fin,
         estado=estado,
         motivo=motivo,
         especialidad=medico_solicitante.especialidad,
         medico_asignado_id=medico_asignado.id if medico_asignado else None,
         medico_asignado_nombre=medico_asignado.nombre if medico_asignado else None,
-        quirofano_id=quirofano_id
+        quirofano_id=quirofano_id,
+        origen=origen
     )
 
     solicitud_turno_id_seq += 1
@@ -330,66 +445,159 @@ async def portal_disponibilidad_turnos():
         "regla_jineteo": "dias_sin_operar DESC, operaciones_hoy ASC"
     }
 
+@app.get("/personal/portal/slots")
+async def portal_slots(
+    fecha: Optional[str] = Query(None),
+    turno: Optional[str] = Query(None)
+):
+    """Matriz demo de slots: fecha + turno + bloque + quirofano."""
+    fecha_iso = parse_fecha_deseada(fecha).isoformat() if fecha else date.today().isoformat()
+
+    if turno and turno not in TURNOS:
+        raise HTTPException(status_code=400, detail="turno invalido")
+
+    slots = construir_slots_demo(fecha_iso, turno=turno)
+    total = len(slots)
+    ocupados = len([slot for slot in slots if slot["ocupado"]])
+
+    return {
+        "fecha": fecha_iso,
+        "turno": turno,
+        "quirofanos": QUIROFANOS_DEMO,
+        "quirofanos_por_turno_bloque": QUIROFANOS_POR_TURNO_BLOQUE,
+        "bloques_por_turno": BLOQUES_POR_TURNO,
+        "total_slots": total,
+        "ocupados": ocupados,
+        "disponibles": total - ocupados,
+        "slots": slots
+    }
+
 @app.post("/personal/portal/solicitar-turno")
 async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
     """
-    Portal de doctores:
-    - Siempre respeta al doctor solicitante (no reasigna a otro medico).
-    - Si no hay cupo en la fecha solicitada, reprograma al siguiente dia disponible.
+    Asignacion estricta para demo:
+    - Solo intenta en la fecha solicitada.
+    - Usa matriz de 30 quirofanos (10 por turno, 5 por bloque).
+    - No reprograma a otro dia.
     """
     if solicitud.turno_deseado not in TURNOS:
         raise HTTPException(status_code=400, detail="Turno invalido")
+
+    origen = solicitud.origen if solicitud.origen in {"portal", "admin"} else "portal"
+
+    if solicitud.bloque_deseado and not bloque_valido_para_turno(solicitud.turno_deseado, solicitud.bloque_deseado):
+        raise HTTPException(status_code=400, detail="bloque_deseado invalido para el turno")
+
+    quirofanos_validos = {q["id"] for q in QUIROFANOS_DEMO}
+    if solicitud.quirofano_id is not None and solicitud.quirofano_id not in quirofanos_validos:
+        raise HTTPException(status_code=400, detail="quirofano_id invalido para demo")
 
     medico = find_medico_by_id(solicitud.medico_id)
     if not medico:
         raise HTTPException(status_code=404, detail="Medico no encontrado")
 
     fecha_solicitada = parse_fecha_deseada(solicitud.fecha_deseada)
+    fecha_solicitada_iso = fecha_solicitada.isoformat()
     hoy = date.today()
 
     turno_final = solicitud.turno_deseado
+    bloque_final = solicitud.bloque_deseado
 
-    fecha_asignada = buscar_fecha_disponible(medico, fecha_solicitada, dias_maximos=14)
+    if not medico_tiene_cupo_en_fecha(medico, fecha_solicitada):
+        hora_inicio, hora_fin = (None, None)
+        if bloque_final:
+            hora_inicio, hora_fin = hora_rango_por_bloque(turno_final, bloque_final)
 
-    if fecha_asignada is None:
+        motivo = "Sin cupo medico para ese dia. La demo no reprograma a otra fecha."
         registro = registrar_solicitud_turno(
             medico_solicitante=medico,
             turno_solicitado=solicitud.turno_deseado,
             turno_final=turno_final,
-            fecha_solicitada=fecha_solicitada.isoformat(),
+            fecha_solicitada=fecha_solicitada_iso,
             fecha_asignada=None,
+            bloque=bloque_final,
+            hora_inicio=hora_inicio,
+            hora_fin=hora_fin,
             estado="rechazado",
-            motivo="No se encontro disponibilidad para el mismo doctor en los proximos 14 dias.",
+            motivo=motivo,
             medico_asignado=medico,
-            quirofano_id=solicitud.quirofano_id
+            quirofano_id=solicitud.quirofano_id,
+            origen=origen
+        )
+
+        return {
+            "success": False,
+            "estado": "rechazado",
+            "message": f"{medico.nombre} no tiene cupo disponible en la fecha seleccionada.",
+            "solicitud": registro,
+            "medico_asignado": medico,
+            "turno_final": turno_final,
+            "bloque_final": bloque_final,
+            "fecha_solicitada": fecha_solicitada_iso,
+            "fecha_asignada": None
+        }
+
+    slots_turno = construir_slots_demo(fecha_solicitada_iso, turno=turno_final)
+
+    candidatos = [
+        slot for slot in slots_turno
+        if not slot["ocupado"]
+    ]
+
+    if bloque_final:
+        candidatos = [slot for slot in candidatos if slot["bloque"] == bloque_final]
+
+    if solicitud.quirofano_id is not None:
+        candidatos = [slot for slot in candidatos if slot["quirofano_id"] == solicitud.quirofano_id]
+
+    if not candidatos:
+        motivo = "No hay slots libres en ese dia/bloque para el medico seleccionado."
+        registro = registrar_solicitud_turno(
+            medico_solicitante=medico,
+            turno_solicitado=solicitud.turno_deseado,
+            turno_final=turno_final,
+            fecha_solicitada=fecha_solicitada_iso,
+            fecha_asignada=None,
+            bloque=bloque_final,
+            hora_inicio=None,
+            hora_fin=None,
+            estado="rechazado",
+            motivo=motivo,
+            medico_asignado=medico,
+            quirofano_id=solicitud.quirofano_id,
+            origen=origen
         )
         return {
             "success": False,
             "estado": "rechazado",
-            "message": f"{medico.nombre} no tiene cupo en los proximos dias.",
+            "message": "No hay disponibilidad en los quirofanos demo para ese dia.",
             "solicitud": registro,
             "medico_asignado": medico,
             "turno_final": turno_final,
-            "fecha_solicitada": fecha_solicitada.isoformat(),
+            "bloque_final": bloque_final,
+            "fecha_solicitada": fecha_solicitada_iso,
             "fecha_asignada": None
         }
 
-    fecha_asignada_iso = fecha_asignada.isoformat()
-    fecha_solicitada_iso = fecha_solicitada.isoformat()
+    slot_asignado = sorted(candidatos, key=lambda item: (item["hora_inicio"], item["quirofano_id"]))[0]
+    bloque_final = slot_asignado["bloque"]
+    hora_inicio = slot_asignado["hora_inicio"]
+    hora_fin = slot_asignado["hora_fin"]
+    quirofano_final = slot_asignado["quirofano_id"]
 
-    if fecha_asignada == hoy:
+    fecha_asignada_iso = fecha_solicitada_iso
+
+    if fecha_solicitada == hoy:
         aplicar_operacion_a_medico(medico)
     else:
         registrar_operacion_programada(medico.id, fecha_asignada_iso)
 
-    if fecha_asignada == fecha_solicitada:
-        estado = "asignado_directo"
-        motivo = "Turno y fecha disponibles para el doctor solicitante."
-        mensaje = f"Turno confirmado para {medico.nombre} el {fecha_asignada_iso}"
-    else:
-        estado = "reprogramado_jineteo"
-        motivo = "No habia cupo en la fecha solicitada; se reprogramo al siguiente dia disponible para el mismo doctor."
-        mensaje = f"Solicitud reprogramada para {medico.nombre}: {fecha_asignada_iso} ({turno_final})"
+    estado = "asignado_admin" if origen == "admin" else "asignado_directo"
+    motivo = f"Asignado en el mismo dia y bloque ({bloque_final}) usando {slot_asignado['quirofano_nombre']}."
+    mensaje = (
+        f"Asignacion confirmada para {medico.nombre}: "
+        f"{fecha_asignada_iso} {hora_inicio}-{hora_fin} en {slot_asignado['quirofano_nombre']}"
+    )
 
     registro = registrar_solicitud_turno(
         medico_solicitante=medico,
@@ -397,10 +605,14 @@ async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
         turno_final=turno_final,
         fecha_solicitada=fecha_solicitada_iso,
         fecha_asignada=fecha_asignada_iso,
+        bloque=bloque_final,
+        hora_inicio=hora_inicio,
+        hora_fin=hora_fin,
         estado=estado,
         motivo=motivo,
         medico_asignado=medico,
-        quirofano_id=solicitud.quirofano_id
+        quirofano_id=quirofano_final,
+        origen=origen
     )
 
     return {
@@ -411,9 +623,13 @@ async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
         "medico_asignado": medico,
         "turno_solicitado": solicitud.turno_deseado,
         "turno_final": turno_final,
+        "bloque_final": bloque_final,
+        "hora_inicio": hora_inicio,
+        "hora_fin": hora_fin,
+        "quirofano_id_final": quirofano_final,
         "fecha_solicitada": fecha_solicitada_iso,
         "fecha_asignada": fecha_asignada_iso,
-        "criterio": "Se conserva el mismo doctor y se mueve al siguiente dia con cupo"
+        "criterio": "Asignacion estricta: mismo dia, sin reprogramacion"
     }
 
 @app.get("/personal/portal/solicitudes")
@@ -438,6 +654,7 @@ async def portal_solicitudes(
 async def portal_programaciones(
     fecha: Optional[str] = Query(None),
     turno: Optional[str] = Query(None),
+    bloque: Optional[str] = Query(None),
     medico_id: Optional[int] = Query(None)
 ):
     """Programaciones del portal para visualizacion por fecha y turno"""
@@ -446,7 +663,7 @@ async def portal_programaciones(
     if turno and turno not in TURNOS:
         raise HTTPException(status_code=400, detail="turno invalido")
 
-    estados_validos = {"asignado_directo", "reprogramado_jineteo", "ajustado_jineteo"}
+    estados_validos = {"asignado_directo", "asignado_admin", "reprogramado_jineteo", "ajustado_jineteo"}
     programaciones = []
 
     for solicitud in solicitudes_turno_db:
@@ -464,7 +681,20 @@ async def portal_programaciones(
         if medico_id is not None and solicitud.medico_asignado_id != medico_id:
             continue
 
-        hora_inicio, hora_fin = hora_rango_por_turno(turno_programado)
+        bloque_programado = solicitud.bloque
+        if not bloque_programado:
+            bloques_turno_programado = bloques_turno(turno_programado)
+            if not bloques_turno_programado:
+                continue
+            bloque_programado = bloques_turno_programado[0]["bloque"]
+
+        if bloque and bloque_programado != bloque:
+            continue
+
+        hora_inicio = solicitud.hora_inicio
+        hora_fin = solicitud.hora_fin
+        if not hora_inicio or not hora_fin:
+            hora_inicio, hora_fin = hora_rango_por_bloque(turno_programado, bloque_programado)
 
         programaciones.append({
             "id": f"portal-{solicitud.id}",
@@ -473,14 +703,15 @@ async def portal_programaciones(
             "medico_nombre": solicitud.medico_asignado_nombre,
             "especialidad": solicitud.especialidad,
             "turno": turno_programado,
+            "bloque": bloque_programado,
             "fecha": solicitud.fecha_asignada,
             "hora_inicio": hora_inicio,
             "hora_fin": hora_fin,
-            "fecha_cita": build_fecha_cita_iso(solicitud.fecha_asignada, turno_programado),
+            "fecha_cita": build_fecha_cita_iso(solicitud.fecha_asignada, hora_inicio),
             "quirofano_id": solicitud.quirofano_id,
             "estado": solicitud.estado,
             "motivo": solicitud.motivo,
-            "source": "portal"
+            "source": solicitud.origen
         })
 
     programaciones = sorted(

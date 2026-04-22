@@ -36,6 +36,7 @@ class Estudio(BaseModel):
 
 class Expediente(BaseModel):
     id: int
+    cita_id: Optional[int] = None
     paciente_id: int
     numero_expediente_clinico: str
     nombre: str
@@ -60,6 +61,12 @@ class Expediente(BaseModel):
     responsable_informacion: Optional[str] = None
     transfusion_evento: Optional[str] = None
     observaciones: Optional[str] = None
+    turno_asignado: Optional[str] = None
+    hora_inicio_cirugia: Optional[str] = None
+    hora_fin_cirugia: Optional[str] = None
+    quirofano_id: Optional[int] = None
+    estado_cirugia: str = "pendiente"
+    enviado_a_cirugia_en: Optional[str] = None
     tipo_sangre: str = "No registrado"
     alergias: List[str] = Field(default_factory=list)
     estudios: List[Estudio] = Field(default_factory=list)
@@ -67,6 +74,7 @@ class Expediente(BaseModel):
 
 
 class ExpedienteCreate(BaseModel):
+    cita_id: Optional[int] = None
     paciente_id: int
     numero_expediente_clinico: str
     nombre: str
@@ -91,6 +99,11 @@ class ExpedienteCreate(BaseModel):
     responsable_informacion: Optional[str] = None
     transfusion_evento: Optional[str] = None
     observaciones: Optional[str] = None
+    turno_asignado: Optional[str] = None
+    hora_inicio_cirugia: Optional[str] = None
+    hora_fin_cirugia: Optional[str] = None
+    quirofano_id: Optional[int] = None
+    estado_cirugia: str = "pendiente"
     tipo_sangre: str = "No registrado"
     alergias: List[str] = Field(default_factory=list)
     estudios: List[Estudio] = Field(default_factory=list)
@@ -376,6 +389,7 @@ async def crear_expediente(expediente: ExpedienteCreate):
 
     nuevo = Expediente(
         id=len(expedientes_db) + 1,
+        cita_id=expediente.cita_id,
         paciente_id=expediente.paciente_id,
         numero_expediente_clinico=expediente.numero_expediente_clinico,
         nombre=expediente.nombre,
@@ -400,6 +414,11 @@ async def crear_expediente(expediente: ExpedienteCreate):
         responsable_informacion=expediente.responsable_informacion,
         transfusion_evento=expediente.transfusion_evento,
         observaciones=expediente.observaciones,
+        turno_asignado=expediente.turno_asignado,
+        hora_inicio_cirugia=expediente.hora_inicio_cirugia,
+        hora_fin_cirugia=expediente.hora_fin_cirugia,
+        quirofano_id=expediente.quirofano_id,
+        estado_cirugia=expediente.estado_cirugia,
         tipo_sangre=expediente.tipo_sangre,
         alergias=expediente.alergias,
         estudios=estudios_con_id,
@@ -474,6 +493,26 @@ async def actualizar_estudio(expediente_id: int, tipo_estudio: str, payload: Est
 
         exp.estudios = preparar_estudios_requeridos(exp.estudios)
         exp.tiene_preproceso = calcular_preproceso(exp.estudios)
+        return exp
+
+    raise HTTPException(status_code=404, detail="Expediente no encontrado")
+
+
+@app.post("/expedientes/{expediente_id}/enviar-cirugia", response_model=Expediente)
+async def enviar_expediente_a_cirugia(expediente_id: int):
+    """Marca el expediente como listo y enviado al quirofano asignado."""
+    for exp in expedientes_db:
+        if exp.id != expediente_id:
+            continue
+
+        if not exp.tiene_preproceso:
+            raise HTTPException(status_code=409, detail="El expediente no tiene preproceso validado")
+        if not exp.quirofano_id:
+            raise HTTPException(status_code=409, detail="El expediente no tiene quirofano asignado")
+
+        exp.estado_cirugia = "enviada_a_quirofano"
+        exp.enviado_a_cirugia_en = date.today().isoformat()
+        exp.destino_paciente = "Quirofano"
         return exp
 
     raise HTTPException(status_code=404, detail="Expediente no encontrado")

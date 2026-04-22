@@ -35,8 +35,8 @@ class Cita(BaseModel):
     paciente_id: int
     paciente_nombre: str
     numero_expediente_clinico: Optional[str] = None
-    medico_id: int
-    medico_nombre: str
+    medico_id: Optional[int] = None
+    medico_nombre: Optional[str] = None
     quirofano_id: Optional[int] = None
     fecha_cita: datetime
     tipo_cirugia: str
@@ -51,20 +51,33 @@ class Cita(BaseModel):
     origen_programacion: str = "legacy"
 
 class CitaCreate(BaseModel):
-    paciente_id: int
+    paciente_id: Optional[int] = None
     paciente_nombre: str
     numero_expediente_clinico: Optional[str] = None
-    medico_id: int
-    medico_nombre: str
+    medico_id: Optional[int] = None
+    medico_nombre: Optional[str] = None
     fecha_cita: datetime
-    tipo_cirugia: str
-    turno: str
+    tipo_cirugia: Optional[str] = None
+    turno: Optional[str] = None
     division_quirurgica: Optional[str] = None
     complejidad_evento: Optional[str] = None
     urgencia_intervencion: Optional[str] = None
     responsable_anestesia: Optional[str] = None
     es_urgencia: bool = False
     requiere_expediente: bool = True
+
+
+class CitaAsignacionQuirurgica(BaseModel):
+    medico_id: Optional[int] = None
+    medico_nombre: Optional[str] = None
+    fecha_cita: Optional[datetime] = None
+    turno: Optional[str] = None
+    quirofano_id: Optional[int] = None
+    tipo_cirugia: Optional[str] = None
+    division_quirurgica: Optional[str] = None
+    complejidad_evento: Optional[str] = None
+    urgencia_intervencion: Optional[str] = None
+    responsable_anestesia: Optional[str] = None
 
 
 CATALOGOS_CITAS = {
@@ -165,6 +178,23 @@ async def _expedientes_get(path: str, params: Optional[dict] = None):
 async def obtener_expediente_por_numero(numero_expediente: str):
     return await _expedientes_get(f"/expedientes/numero/{numero_expediente}")
 
+
+def inferir_turno_por_hora(fecha_cita: datetime) -> str:
+    hora = fecha_cita.hour
+
+    if 8 <= hora < 16:
+        return "manana"
+    if 16 <= hora < 24:
+        return "tarde"
+    return "noche"
+
+
+def siguiente_paciente_id() -> int:
+    existentes = [cita.paciente_id for cita in citas_db]
+    if not existentes:
+        return 1
+    return max(existentes) + 1
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "citas", "db": "mysql", "port": 8001}
@@ -221,20 +251,42 @@ async def programar_cita(cita: CitaCreate):
     expediente_data = None
     warning = None
     numero_expediente = cita.numero_expediente_clinico
+    paciente_id = cita.paciente_id
+    paciente_id_auto = False
 
     if numero_expediente:
         expediente_data = await obtener_expediente_por_numero(numero_expediente)
         if not expediente_data:
             raise HTTPException(status_code=404, detail="No existe el numero de expediente indicado")
-        if expediente_data.get("paciente_id") != cita.paciente_id:
+
+        paciente_id_expediente = expediente_data.get("paciente_id")
+        if paciente_id is not None and paciente_id_expediente != paciente_id:
             raise HTTPException(
                 status_code=409,
                 detail="El paciente_id no coincide con el numero de expediente"
             )
+        paciente_id = paciente_id_expediente
     else:
-        warning = "Cita creada sin expediente. Completa el expediente en el Paso 2."
+        if paciente_id is None:
+            paciente_id = siguiente_paciente_id()
+            paciente_id_auto = True
+            warning = (
+                f"Paciente creado automaticamente con ID {paciente_id}. "
+                "Completa el expediente en el Paso 2."
+            )
+        else:
+            warning = "Cita creada sin expediente. Completa el expediente en el Paso 2."
 
-    tipo_cirugia = cita.tipo_cirugia or (expediente_data.get("diagnostico_preoperatorio") if expediente_data else "General")
+    if paciente_id is None:
+        raise HTTPException(status_code=400, detail="No se pudo resolver paciente_id para la cita")
+
+    turno_final = cita.turno or inferir_turno_por_hora(cita.fecha_cita)
+    if turno_final not in CATALOGOS_CITAS["turnos"]:
+        raise HTTPException(status_code=400, detail="turno invalido")
+
+    medico_nombre = (cita.medico_nombre or "").strip() or "Por asignar"
+
+    tipo_cirugia = cita.tipo_cirugia or (expediente_data.get("diagnostico_preoperatorio") if expediente_data else "Valoracion inicial")
     division_quirurgica = cita.division_quirurgica or (expediente_data.get("division_quirurgica") if expediente_data else None)
     complejidad_evento = cita.complejidad_evento or (expediente_data.get("tipo_cirugia_complejidad") if expediente_data else None)
     urgencia_intervencion = cita.urgencia_intervencion or (expediente_data.get("tipo_cirugia_urgencia") if expediente_data else None)
@@ -242,22 +294,26 @@ async def programar_cita(cita: CitaCreate):
 
     nueva_cita = Cita(
         id=len(citas_db) + 1,
-        paciente_id=cita.paciente_id,
+        paciente_id=paciente_id,
         paciente_nombre=cita.paciente_nombre,
         numero_expediente_clinico=numero_expediente,
         medico_id=cita.medico_id,
-        medico_nombre=cita.medico_nombre,
+        medico_nombre=medico_nombre,
         fecha_cita=cita.fecha_cita,
         tipo_cirugia=tipo_cirugia,
         division_quirurgica=division_quirurgica,
         complejidad_evento=complejidad_evento,
         urgencia_intervencion=urgencia_intervencion,
         responsable_anestesia=responsable_anestesia,
-        turno=cita.turno,
+        turno=turno_final,
         es_urgencia=cita.es_urgencia,
         requiere_expediente=cita.requiere_expediente,
         estado="programada",
-        origen_programacion="admision-integrada" if expediente_data else "flujo-cita-primero"
+        origen_programacion=(
+            "admision-integrada"
+            if expediente_data
+            else ("cita-sin-expediente-autoid" if paciente_id_auto else "flujo-cita-primero")
+        )
     )
     citas_db.append(nueva_cita)
 
@@ -268,6 +324,44 @@ async def programar_cita(cita: CitaCreate):
         "validacion_expediente": None,
         "warning": warning
     }
+
+
+@app.post("/citas/{cita_id}/asignacion-quirurgica", response_model=Cita)
+async def asignacion_quirurgica_cita(cita_id: int, asignacion: CitaAsignacionQuirurgica):
+    """Actualiza la cita con la asignacion clinica final del paso de expedientes."""
+    for cita in citas_db:
+        if cita.id != cita_id:
+            continue
+
+        if asignacion.medico_id is not None:
+            cita.medico_id = asignacion.medico_id
+        if asignacion.medico_nombre is not None:
+            cita.medico_nombre = asignacion.medico_nombre.strip() or cita.medico_nombre or "Por asignar"
+        if asignacion.fecha_cita is not None:
+            cita.fecha_cita = asignacion.fecha_cita
+        if asignacion.quirofano_id is not None:
+            cita.quirofano_id = asignacion.quirofano_id
+        if asignacion.tipo_cirugia is not None:
+            cita.tipo_cirugia = asignacion.tipo_cirugia
+        if asignacion.division_quirurgica is not None:
+            cita.division_quirurgica = asignacion.division_quirurgica
+        if asignacion.complejidad_evento is not None:
+            cita.complejidad_evento = asignacion.complejidad_evento
+        if asignacion.urgencia_intervencion is not None:
+            cita.urgencia_intervencion = asignacion.urgencia_intervencion
+        if asignacion.responsable_anestesia is not None:
+            cita.responsable_anestesia = asignacion.responsable_anestesia
+
+        if asignacion.turno:
+            if asignacion.turno not in CATALOGOS_CITAS["turnos"]:
+                raise HTTPException(status_code=400, detail="turno invalido")
+            cita.turno = asignacion.turno
+        else:
+            cita.turno = inferir_turno_por_hora(cita.fecha_cita)
+
+        return cita
+
+    raise HTTPException(status_code=404, detail="Cita no encontrada")
 
 @app.post("/citas/{cita_id}/cancelar")
 async def cancelar_cita(cita_id: int):

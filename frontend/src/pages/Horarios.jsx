@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
-const API_CITAS = 'http://localhost:8001'
 const API_PERSONAL = 'http://localhost:8005'
 
 function Horarios() {
-  const [citas, setCitas] = useState([])
+  const [slots, setSlots] = useState([])
   const [medicos, setMedicos] = useState([])
   const [turnoActual, setTurnoActual] = useState('manana')
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => new Date().toISOString().slice(0, 10))
@@ -12,6 +11,7 @@ function Horarios() {
 
   const getEstadoPortalLabel = (estado) => {
     if (estado === 'asignado_directo') return 'Horario asignado'
+    if (estado === 'asignado_admin') return 'Asignado por admin'
     if (estado === 'ajustado_jineteo') return 'Horario ajustado'
     if (estado === 'reprogramado_jineteo') return 'Horario reasignado'
     if (estado === 'reasignado_jineteo') return 'Horario reasignado'
@@ -43,68 +43,21 @@ function Horarios() {
     return () => clearInterval(interval)
   }, [turnoActual, fechaSeleccionada])
 
-  const extraerFecha = (fechaValor) => {
-    if (!fechaValor) return ''
-
-    const parsed = new Date(fechaValor)
-    if (!Number.isNaN(parsed.getTime())) {
-      const y = parsed.getFullYear()
-      const m = String(parsed.getMonth() + 1).padStart(2, '0')
-      const d = String(parsed.getDate()).padStart(2, '0')
-      return `${y}-${m}-${d}`
-    }
-
-    return String(fechaValor).slice(0, 10)
-  }
-
-  const mapearProgramacionPortal = (item) => ({
-    id: item.id,
-    paciente_nombre: 'Bloque reservado (Portal)',
-    medico_id: item.medico_id,
-    medico_nombre: item.medico_nombre || 'Doctor sin nombre',
-    quirofano_id: item.quirofano_id,
-    fecha_cita: item.fecha_cita,
-    tipo_cirugia: item.especialidad || 'General',
-    estado: 'programada',
-    es_urgencia: false,
-    turno: item.turno,
-    source: 'portal',
-    estado_portal: item.estado,
-    motivo_portal: item.motivo
-  })
-
   const fetchData = async () => {
     try {
-      const [citasRes, medicosRes, portalRes] = await Promise.all([
-        fetch(`${API_CITAS}/citas?turno=${turnoActual}`),
-        fetch(`${API_PERSONAL}/personal/medicos`),
-        fetch(`${API_PERSONAL}/personal/portal/programaciones?turno=${turnoActual}&fecha=${fechaSeleccionada}`)
+      const [slotsRes, medicosRes] = await Promise.all([
+        fetch(`${API_PERSONAL}/personal/portal/slots?turno=${turnoActual}&fecha=${fechaSeleccionada}`),
+        fetch(`${API_PERSONAL}/personal/medicos?turno=${turnoActual}`)
       ])
 
-      if (citasRes.ok && medicosRes.ok && portalRes.ok) {
-        const citasData = await citasRes.json()
+      if (slotsRes.ok) {
+        const data = await slotsRes.json()
+        setSlots(data.slots || [])
+      }
+
+      if (medicosRes.ok) {
         const medicosData = await medicosRes.json()
-        const portalData = await portalRes.json()
-
-        const citasDelDia = citasData.filter((cita) => (
-          cita.estado === 'programada' && extraerFecha(cita.fecha_cita) === fechaSeleccionada
-        ))
-
-        const citasPortal = (portalData.programaciones || []).map(mapearProgramacionPortal)
-        const citasCombinadas = [...citasDelDia, ...citasPortal]
-
-        // Para demo: la vista de horarios se amarra a asignaciones/citas reales del turno seleccionado.
-        const medicosActivosIds = new Set(
-          citasCombinadas
-            .map((item) => item.medico_id)
-            .filter((id) => id !== null && id !== undefined)
-        )
-
-        const medicosActivos = medicosData.filter((item) => medicosActivosIds.has(item.id))
-        const medicosFallback = medicosData.filter((item) => item.disponible).slice(0, 12)
-
-        setCitas(citasCombinadas)
-        setMedicos(medicosActivos.length > 0 ? medicosActivos : medicosFallback)
+        setMedicos(medicosData)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -113,18 +66,30 @@ function Horarios() {
     }
   }
 
-  const getMedicoOperaciones = (medicoId) => {
-    return citas.filter(c => c.medico_id === medicoId && c.estado === 'programada').length
-  }
+  const slotsOcupados = useMemo(
+    () => slots.filter((slot) => slot.ocupado),
+    [slots]
+  )
 
-  const getCitasPorHora = (hora) => {
-    return citas.filter(c => {
-      if (!c.fecha_cita) return false
-      const citaHora = new Date(c.fecha_cita).getHours()
-      const bloqueHora = parseInt(hora.split(':')[0])
-      return citaHora === bloqueHora
-    })
-  }
+  const quirofanosTurno = useMemo(
+    () => new Set(slots.map((slot) => slot.quirofano_id)).size,
+    [slots]
+  )
+
+  const medicosActivos = useMemo(() => {
+    const ids = new Set(slotsOcupados.map((slot) => slot.medico_id).filter(Boolean))
+    const activos = medicos.filter((item) => ids.has(item.id))
+    return activos.length > 0 ? activos : medicos.slice(0, 12)
+  }, [medicos, slotsOcupados])
+
+  const getMedicoOperaciones = (medicoId) => (
+    slotsOcupados.filter((slot) => slot.medico_id === medicoId).length
+  )
+
+  const getSlotsPorBloque = (bloque) => (
+    slots.filter((slot) => slot.bloque === bloque)
+      .sort((a, b) => a.quirofano_id - b.quirofano_id)
+  )
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>Cargando horarios...</div>
@@ -132,10 +97,9 @@ function Horarios() {
 
   return (
     <div>
-      {/* Header con turnos */}
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>
-          📅 Gestión de Horarios y Turnos
+          Gestión de Horarios y Turnos
         </h2>
 
         <div style={{ marginBottom: '1rem', maxWidth: '280px' }}>
@@ -180,73 +144,43 @@ function Horarios() {
         </div>
       </div>
 
-      {/* Stats del turno */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '1rem',
         marginBottom: '2rem'
       }}>
-        <div style={{
-          background: '#ffffff',
-          padding: '1rem',
-          borderRadius: '8px',
-          border: '1px solid #e6f5ff'
-        }}>
+        <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e6f5ff' }}>
           <div style={{ color: '#888', fontSize: '0.85rem' }}>Médicos en turno</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#14b8a6' }}>
-            {medicos.length}
-          </div>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#14b8a6' }}>{medicosActivos.length}</div>
         </div>
 
-        <div style={{
-          background: '#ffffff',
-          padding: '1rem',
-          borderRadius: '8px',
-          border: '1px solid #e6f5ff'
-        }}>
-          <div style={{ color: '#888', fontSize: '0.85rem' }}>Cirugías programadas</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#0a78b5' }}>
-            {citas.length}
-          </div>
+        <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e6f5ff' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem' }}>Bloques ocupados</div>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#0a78b5' }}>{slotsOcupados.length}</div>
         </div>
 
-        <div style={{
-          background: '#ffffff',
-          padding: '1rem',
-          borderRadius: '8px',
-          border: '1px solid #e6f5ff'
-        }}>
-          <div style={{ color: '#888', fontSize: '0.85rem' }}>Médicos disponibles</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#ffa502' }}>
-            {medicos.filter(m => m.disponible && m.operaciones_hoy < 2).length}
-          </div>
+        <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e6f5ff' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem' }}>Slots libres</div>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#ffa502' }}>{slots.length - slotsOcupados.length}</div>
         </div>
 
-        <div style={{
-          background: '#ffffff',
-          padding: '1rem',
-          borderRadius: '8px',
-          border: '1px solid #e6f5ff'
-        }}>
-          <div style={{ color: '#888', fontSize: '0.85rem' }}>Urgencias</div>
-          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#ff4757' }}>
-            {citas.filter(c => c.es_urgencia).length}
-          </div>
+        <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e6f5ff' }}>
+          <div style={{ color: '#888', fontSize: '0.85rem' }}>Quirofanos del turno</div>
+          <div style={{ fontSize: '2rem', fontWeight: '700', color: '#0b8f9b' }}>{quirofanosTurno}</div>
         </div>
       </div>
 
-      {/* Grid de médicos con sus cargas */}
       <div style={{ marginBottom: '2rem' }}>
         <h3 style={{ marginBottom: '1rem', color: '#0a78b5' }}>
-          👨‍⚕️ Médicos del turno - Algoritmo de Jineteo
+          Médicos del turno
         </h3>
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
           gap: '1rem'
         }}>
-          {medicos.slice(0, 12).map(medico => {
+          {medicosActivos.slice(0, 12).map((medico) => {
             const operaciones = getMedicoOperaciones(medico.id)
             const disponible = medico.disponible && medico.operaciones_hoy < 2
 
@@ -262,9 +196,7 @@ function Horarios() {
                   <span style={{ fontWeight: '600' }}>{medico.nombre}</span>
                   {disponible && <span style={{ color: '#14b8a6', fontSize: '0.8rem' }}>✓</span>}
                 </div>
-                <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  {medico.especialidad}
-                </div>
+                <div style={{ color: '#888', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{medico.especialidad}</div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <div style={{
                     background: medico.operaciones_hoy === 0 ? '#14b8a6' : medico.operaciones_hoy === 1 ? '#ffa502' : '#ff4757',
@@ -276,9 +208,7 @@ function Horarios() {
                   }}>
                     {medico.operaciones_hoy}/2 ops
                   </div>
-                  <div style={{ color: '#666', fontSize: '0.75rem' }}>
-                    {operaciones} programadas
-                  </div>
+                  <div style={{ color: '#666', fontSize: '0.75rem' }}>{operaciones} programadas</div>
                 </div>
               </div>
             )
@@ -286,19 +216,18 @@ function Horarios() {
         </div>
       </div>
 
-      {/* Timeline de bloques de 4 horas */}
       <div>
         <h3 style={{ marginBottom: '1rem', color: '#0a78b5' }}>
-          🕐 Bloques de cirugías (4 horas cada uno)
+          Bloques de cirugias (4 horas cada uno, 5 quirofanos por bloque)
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {bloquesVisibles.map(hora => {
-            const citasBloque = getCitasPorHora(hora)
-            const horaFin = (parseInt(hora.split(':')[0]) + 4) % 24
-            const horaFinStr = `${horaFin.toString().padStart(2, '0')}:00`
+          {bloquesVisibles.map((bloque) => {
+            const slotsBloque = getSlotsPorBloque(bloque)
+            const horaFin = slotsBloque[0]?.hora_fin || '--:--'
+            const ocupados = slotsBloque.filter((slot) => slot.ocupado)
 
             return (
-              <div key={hora} style={{
+              <div key={bloque} style={{
                 background: '#ffffff',
                 border: '1px solid #e6f5ff',
                 borderRadius: '8px',
@@ -306,62 +235,54 @@ function Horarios() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                   <div>
-                    <span style={{ fontSize: '1.2rem', fontWeight: '700' }}>{hora} - {horaFinStr}</span>
-                    <span style={{ color: '#888', marginLeft: '1rem', fontSize: '0.85rem' }}>
-                      (3h cirugía + 1h limpieza)
-                    </span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: '700' }}>{bloque} - {horaFin}</span>
+                    <span style={{ color: '#888', marginLeft: '1rem', fontSize: '0.85rem' }}>(3h cirugía + 1h limpieza)</span>
                   </div>
                   <span style={{
-                    background: citasBloque.length > 0 ? '#0a78b5' : '#e6f5ff',
+                    background: ocupados.length > 0 ? '#0a78b5' : '#e6f5ff',
+                    color: ocupados.length > 0 ? '#fff' : '#1f435f',
                     padding: '0.25rem 1rem',
                     borderRadius: '20px',
                     fontSize: '0.85rem'
                   }}>
-                    {citasBloque.length} cirugías
+                    {ocupados.length} ocupados
                   </span>
                 </div>
 
-                {citasBloque.length > 0 ? (
-                  <div style={{ display: 'grid', gap: '0.5rem' }}>
-                    {citasBloque.map(cita => (
-                      <div key={cita.id} style={{
-                        background: '#e6f5ff',
-                        padding: '0.75rem',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        border: cita.es_urgencia ? '2px solid #ff4757' : 'none'
-                      }}>
-                        <div>
-                          <div style={{ fontWeight: '600' }}>
-                            {cita.paciente_nombre}
-                            {cita.es_urgencia && <span style={{ color: '#ff4757', marginLeft: '0.5rem' }}>⚠️ URGENCIA</span>}
-                          </div>
-                          <div style={{ color: '#888', fontSize: '0.85rem' }}>
-                            {cita.tipo_cirugia} - Dr. {cita.medico_nombre}
-                          </div>
-                          <div style={{ color: cita.source === 'portal' ? '#ffa502' : '#9aa', fontSize: '0.75rem' }}>
-                            {cita.source === 'portal' ? `Portal doctor (${getEstadoPortalLabel(cita.estado_portal)})` : 'Cita servicio'}
-                          </div>
+                <div style={{ display: 'grid', gap: '0.45rem' }}>
+                  {slotsBloque.map((slot) => (
+                    <div key={slot.slot_id} style={{
+                      background: '#e6f5ff',
+                      padding: '0.75rem',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      border: slot.ocupado ? '1px solid #0a78b5' : '1px dashed #68819a'
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: '600' }}>
+                          {slot.ocupado ? slot.medico_nombre : 'Disponible'}
                         </div>
-                        <div style={{
-                          background: '#0a78b5',
-                          color: '#fff',
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '4px',
-                          fontSize: '0.8rem'
-                        }}>
-                          Q#{cita.quirofano_id || '--'}
+                        <div style={{ color: '#888', fontSize: '0.85rem' }}>
+                          {slot.ocupado ? `${slot.especialidad || 'General'} - ${getEstadoPortalLabel(slot.estado)}` : 'Sin asignacion'}
+                        </div>
+                        <div style={{ color: '#9aa', fontSize: '0.75rem' }}>
+                          Fuente: {slot.source === 'admin' ? 'Asignacion admin' : 'Portal doctor'}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: '#666', textAlign: 'center', padding: '1rem' }}>
-                    Sin cirugías programadas
-                  </div>
-                )}
+                      <div style={{
+                        background: slot.ocupado ? '#0a78b5' : '#68819a',
+                        color: '#fff',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '4px',
+                        fontSize: '0.8rem'
+                      }}>
+                        Q#{slot.quirofano_id}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )
           })}
