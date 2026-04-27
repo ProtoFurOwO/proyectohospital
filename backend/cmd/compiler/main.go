@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"hospital-system/compiler"
+	"hospital-system/loganalyzer"
 )
 
 //go:embed static/*
@@ -28,23 +29,41 @@ type SQLResponse struct {
 	Data    interface{}      `json:"data,omitempty"`
 }
 
+// LogRequest es el body esperado en POST /logs
+type LogRequest struct {
+	Raw string `json:"raw"`
+}
+
+var logStore *loganalyzer.LogStore
+
 func main() {
 	sqlSvc := &SQLService{
 		executor: compiler.NewExecutor(),
 	}
 
+	logStore = loganalyzer.NewLogStore()
+
 	mux := http.NewServeMux()
 	cors := corsMiddleware
 
+	// ── Endpoints SQL existentes (sin cambios) ──
 	mux.HandleFunc("/sql/execute", cors(sqlSvc.handleSQLExecute))
 	mux.HandleFunc("/sql/tokenize", cors(sqlSvc.handleSQLTokenize))
 	mux.HandleFunc("/sql/logs", cors(sqlSvc.handleSQLLogs))
 
+	// ── Nuevos endpoints: Visor de Logs (Analizador Léxico/Sintáctico) ──
+	mux.HandleFunc("/logs", cors(handleLogs))
+
+	// ── Health ──
 	mux.HandleFunc("/health", cors(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "compiler"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"service": "compiler+loganalyzer",
+		})
 	}))
 
+	// ── Archivos estáticos (UI SQL legacy) ──
 	staticSub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("error cargando archivos estaticos: %v", err)
@@ -60,11 +79,80 @@ func main() {
 		}
 	}))
 
-	log.Println("📊 Servicio de Compiladores iniciado en puerto 8006")
+	log.Println("📊 Servicio de Compiladores + Log Analyzer iniciado en puerto 8006")
 	log.Println("🌐 UI SQL disponible en http://localhost:8006")
-	log.Println("🔧 API SQL disponible en /sql/execute")
+	log.Println("🔧 API SQL en /sql/execute | Logs en POST/GET /logs")
 	log.Fatal(http.ListenAndServe(":8006", mux))
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  HANDLER: /logs  (POST para recibir, GET para listar, DELETE para limpiar)
+// ═══════════════════════════════════════════════════════════════
+
+func handleLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodPost:
+		handleLogPost(w, r)
+	case http.MethodGet:
+		handleLogGet(w, r)
+	case http.MethodDelete:
+		handleLogDelete(w, r)
+	default:
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleLogPost(w http.ResponseWriter, r *http.Request) {
+	var req LogRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Raw == "" {
+		http.Error(w, `{"error":"Se requiere el campo 'raw' con la cadena de log"}`, http.StatusBadRequest)
+		return
+	}
+
+	entry := logStore.Process(req.Raw)
+
+	log.Printf("📝 Log #%d [%s]: %s", entry.ID, entry.Estado, entry.Raw)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"entry":   entry,
+	})
+}
+
+func handleLogGet(w http.ResponseWriter, r *http.Request) {
+	entries := logStore.GetAll()
+
+	// Contar válidos e inválidos para estadísticas
+	valid := 0
+	invalid := 0
+	for _, e := range entries {
+		if e.Estado == "Válido" {
+			valid++
+		} else {
+			invalid++
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total":   len(entries),
+		"valid":   valid,
+		"invalid": invalid,
+		"entries": entries,
+	})
+}
+
+func handleLogDelete(w http.ResponseWriter, r *http.Request) {
+	logStore.Clear()
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Logs limpiados",
+	})
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CORS Middleware
+// ═══════════════════════════════════════════════════════════════
 
 func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +168,10 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	}
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  Handlers SQL existentes (sin cambios)
+// ═══════════════════════════════════════════════════════════════
 
 func (s *SQLService) handleSQLExecute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

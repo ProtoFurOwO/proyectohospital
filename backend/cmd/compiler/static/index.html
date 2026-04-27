@@ -15,8 +15,14 @@
       <span class="badge">Puerto 8006</span>
     </header>
 
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-target="tab-sql">Editor SQL</button>
+      <button class="tab-btn" data-target="tab-logs">📋 Visor de Logs Centralizado</button>
+    </div>
+
     <main class="container">
-      <section class="panel editor-panel">
+      <div id="tab-sql" class="tab-content active">
+        <section class="panel editor-panel">
         <h2>Editor SQL</h2>
         <textarea id="query" spellcheck="false"></textarea>
 
@@ -50,9 +56,82 @@
           </table>
         </div>
 
-        <h2>Logs</h2>
+        <h2>Logs Locales (Compilador)</h2>
         <div id="logs" class="logs"></div>
       </section>
+      </div> <!-- end tab-sql -->
+
+      <div id="tab-logs" class="tab-content">
+        <div class="log-viewer-header">
+          <div class="connection-status">
+            <div id="pollingIndicator" class="status-dot active"></div>
+            <span id="lastUpdateText">Esperando datos...</span>
+          </div>
+          <div class="log-actions">
+            <button id="togglePollingBtn" class="btn">⏸ Pausar</button>
+            <button id="clearAllLogsBtn" class="btn warning">🗑 Limpiar</button>
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card" style="--c: #3b82f6">
+            <div class="icon">📊</div>
+            <div class="val" id="statTotal">0</div>
+            <div class="lbl">Total Logs</div>
+          </div>
+          <div class="stat-card" style="--c: #22c55e">
+            <div class="icon">✅</div>
+            <div class="val" id="statValid">0</div>
+            <div class="lbl">Válidos</div>
+          </div>
+          <div class="stat-card" style="--c: #ef4444">
+            <div class="icon">❌</div>
+            <div class="val" id="statInvalid">0</div>
+            <div class="lbl">Inválidos</div>
+          </div>
+          <div class="stat-card" style="--c: #a855f7">
+            <div class="icon">🔍</div>
+            <div class="val" id="statShown">0</div>
+            <div class="lbl">Mostrados</div>
+          </div>
+        </div>
+
+        <div class="filters-row">
+          <span class="lbl">Filtros:</span>
+          <select id="filterNivel" class="filter-select">
+            <option value="ALL">Nivel: Todos</option>
+            <option value="INFO">🟢 INFO</option>
+            <option value="WARN">🟡 WARN</option>
+            <option value="ERROR">🔴 ERROR</option>
+          </select>
+          <select id="filterModulo" class="filter-select">
+            <option value="ALL">Módulo: Todos</option>
+            <option value="CITAS">CITAS</option>
+            <option value="EXPEDIENTES">EXPEDIENTES</option>
+            <option value="QUIROFANOS">QUIRÓFANOS</option>
+            <option value="PERSONAL">PERSONAL</option>
+          </select>
+        </div>
+
+        <div class="panel log-table-panel">
+          <div class="table-wrap log-table-wrap">
+            <table class="log-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Hora</th>
+                  <th>Cadena Original</th>
+                  <th>Tokens (Análisis Léxico)</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="centralLogsBody">
+                <tr><td colspan="5" class="empty-msg">Cargando logs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div> <!-- end tab-logs -->
     </main>
 
     <script src="/app.js"></script>

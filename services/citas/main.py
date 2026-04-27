@@ -7,9 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
-import os
+import os, sys
 
 import httpx
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from log_emitter import emit_log_bg
 
 app = FastAPI(
     title="Servicio de Citas Medicas",
@@ -317,6 +320,8 @@ async def programar_cita(cita: CitaCreate):
     )
     citas_db.append(nueva_cita)
 
+    emit_log_bg("INFO", "CITAS", "CREATE", "PACIENTE", f"{cita.paciente_nombre}_ID{paciente_id}")
+
     return {
         "success": True,
         "message": "Cita programada exitosamente",
@@ -359,6 +364,8 @@ async def asignacion_quirurgica_cita(cita_id: int, asignacion: CitaAsignacionQui
         else:
             cita.turno = inferir_turno_por_hora(cita.fecha_cita)
 
+        emit_log_bg("INFO", "CITAS", "UPDATE", "PACIENTE", f"asignacion_quirurgica_cita{cita_id}")
+
         return cita
 
     raise HTTPException(status_code=404, detail="Cita no encontrada")
@@ -369,6 +376,7 @@ async def cancelar_cita(cita_id: int):
     for cita in citas_db:
         if cita.id == cita_id:
             cita.estado = "cancelada"
+            emit_log_bg("WARN", "CITAS", "DELETE", "PACIENTE", f"{cita.paciente_nombre}_cita{cita_id}")
             return {"success": True, "message": "Cita cancelada", "data": cita}
     raise HTTPException(status_code=404, detail="Cita no encontrada")
 

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,6 +23,8 @@ var (
 	quirofanoSvc *QuirofanoService
 )
 
+const logAnalyzerURL = "http://localhost:8006/logs"
+
 func init() {
 	// Inicializar 30 quirófanos
 	quirofanoSvc = &QuirofanoService{
@@ -33,6 +37,21 @@ func init() {
 			Estado: models.Disponible,
 		}
 	}
+}
+
+// emitLog envía un log al servicio de Log Analyzer (fire-and-forget).
+func emitLog(nivel, accion, entidad, valor string) {
+	go func() {
+		raw := fmt.Sprintf("[%s] [QUIROFANOS] %s %s %s", nivel, accion, entidad, valor)
+		body, _ := json.Marshal(map[string]string{"raw": raw})
+
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Post(logAnalyzerURL, "application/json", bytes.NewReader(body))
+		if err != nil {
+			return // silencioso: el log analyzer puede no estar corriendo
+		}
+		resp.Body.Close()
+	}()
 }
 
 func main() {
@@ -186,6 +205,8 @@ func handleIniciarCirugia(w http.ResponseWriter, r *http.Request, id int) {
 	q.FinEstimado = &fin
 	q.EsUrgencia = req.EsUrgencia
 
+	emitLog("INFO", "ASSIGN", "QUIROFANO", fmt.Sprintf("Q%d_%s_%s", id, req.MedicoNombre, req.Especialidad))
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Cirugía iniciada",
@@ -220,6 +241,8 @@ func handleTerminarCirugia(w http.ResponseWriter, r *http.Request, id int) {
 	q.FinEstimado = &fin
 	q.EsUrgencia = false
 
+	emitLog("INFO", "UPDATE", "QUIROFANO", fmt.Sprintf("Q%d_limpieza", id))
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Cirugía terminada. Iniciando limpieza.",
@@ -245,6 +268,8 @@ func handleLimpiezaLista(w http.ResponseWriter, r *http.Request, id int) {
 	q.Estado = models.Disponible
 	q.InicioOperacion = nil
 	q.FinEstimado = nil
+
+	emitLog("INFO", "UPDATE", "QUIROFANO", fmt.Sprintf("Q%d_disponible", id))
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -296,6 +321,8 @@ func handleUrgencia(w http.ResponseWriter, r *http.Request, id int) {
 	targetQ.InicioOperacion = &now
 	targetQ.FinEstimado = &fin
 	targetQ.EsUrgencia = true
+
+	emitLog("ERROR", "ASSIGN", "QUIROFANO", fmt.Sprintf("Q%d_URGENCIA", targetQ.ID))
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,

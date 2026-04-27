@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from log_emitter import emit_log_bg
 
 app = FastAPI(
     title="Servicio de Personal Medico",
@@ -615,6 +618,8 @@ async def portal_solicitar_turno(solicitud: SolicitudTurnoRequest):
         origen=origen
     )
 
+    emit_log_bg("INFO", "PERSONAL", "ASSIGN", "TURNO", f"{medico.nombre}_Q{quirofano_final}_{turno_final}_{bloque_final}")
+
     return {
         "success": True,
         "estado": estado,
@@ -796,6 +801,8 @@ async def asignar_medico(asignacion: AsignacionRequest):
             if medico.operaciones_hoy >= medico.max_operaciones:
                 medico.disponible = False
 
+            emit_log_bg("INFO", "PERSONAL", "ASSIGN", "TURNO", f"{medico.nombre}_Q{asignacion.quirofano_id}")
+
             return {
                 "success": True,
                 "message": "Medico asignado exitosamente",
@@ -876,6 +883,8 @@ async def nuevo_dia():
 
         # Resetear operaciones del día
         medico.operaciones_hoy = 0
+
+    emit_log_bg("WARN", "PERSONAL", "UPDATE", "TURNO", f"rotacion_diaria_{fecha_actual}")
 
     return {
         "success": True,

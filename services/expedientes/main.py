@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import date
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from log_emitter import emit_log_bg
 
 app = FastAPI(
     title="Servicio de Expedientes Clinicos",
@@ -426,6 +429,9 @@ async def crear_expediente(expediente: ExpedienteCreate):
     )
 
     expedientes_db.append(nuevo)
+
+    emit_log_bg("INFO", "EXPEDIENTES", "CREATE", "EXPEDIENTE", f"{nuevo.nombre}_{nuevo.numero_expediente_clinico}")
+
     return nuevo
 
 @app.post("/expedientes/{expediente_id}/agregar-estudio")
@@ -493,6 +499,9 @@ async def actualizar_estudio(expediente_id: int, tipo_estudio: str, payload: Est
 
         exp.estudios = preparar_estudios_requeridos(exp.estudios)
         exp.tiene_preproceso = calcular_preproceso(exp.estudios)
+
+        emit_log_bg("INFO", "EXPEDIENTES", "UPDATE", "EXPEDIENTE", f"{exp.nombre}_estudio_{tipo_normalizado}")
+
         return exp
 
     raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -513,6 +522,9 @@ async def enviar_expediente_a_cirugia(expediente_id: int):
         exp.estado_cirugia = "enviada_a_quirofano"
         exp.enviado_a_cirugia_en = date.today().isoformat()
         exp.destino_paciente = "Quirofano"
+
+        emit_log_bg("WARN", "EXPEDIENTES", "ASSIGN", "QUIROFANO", f"Q{exp.quirofano_id}_{exp.nombre}")
+
         return exp
 
     raise HTTPException(status_code=404, detail="Expediente no encontrado")
