@@ -5,6 +5,7 @@ import AsignacionMedicos from './pages/AsignacionMedicos'
 import DoctorPortal from './pages/DoctorPortal'
 import CitasAdmin from './pages/CitasAdmin'
 import ExpedientesAdmin from './pages/ExpedientesAdmin'
+import AdminMedicos from './pages/AdminMedicos'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -50,6 +51,13 @@ function App() {
           >
             Expedientes Admin
           </button>
+          <button
+            className={`nav-tab ${activeTab === 'admin-medicos' ? 'active' : ''}`}
+            onClick={() => setActiveTab('admin-medicos')}
+            style={{ color: '#ec4899' }}
+          >
+            👨‍⚕️ Admin Médicos
+          </button>
         </nav>
       </header>
 
@@ -60,6 +68,7 @@ function App() {
         {activeTab === 'portal-doctor' && <DoctorPortal />}
         {activeTab === 'citas-admin' && <CitasAdmin />}
         {activeTab === 'expedientes-admin' && <ExpedientesAdmin />}
+        {activeTab === 'admin-medicos' && <AdminMedicos />}
       </main>
     </div>
   )

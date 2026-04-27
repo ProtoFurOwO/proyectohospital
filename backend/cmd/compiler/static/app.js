@@ -41,10 +41,37 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-function renderResult(success, message) {
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function formatResultData(data) {
+  if (!data) return '';
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      return '<div class="result-data">Sin datos</div>';
+    }
+
+    if (typeof data[0] === 'string') {
+      const items = data.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+      return `<ul class="result-data">${items}</ul>`;
+    }
+
+    return `<pre class="result-data">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+
+  return `<pre class="result-data">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+}
+
+function renderResult(success, message, data) {
   resultEl.classList.remove('hidden', 'ok', 'err');
   resultEl.classList.add(success ? 'ok' : 'err');
-  resultEl.innerHTML = `<strong>${success ? 'EXITO' : 'ERROR'}:</strong> ${message}`;
+  const dataHtml = formatResultData(data);
+  resultEl.innerHTML = `<strong>${success ? 'EXITO' : 'ERROR'}:</strong> ${message}${dataHtml}`;
 }
 
 function renderTokens(tokens) {
@@ -122,7 +149,7 @@ async function execute() {
       body: JSON.stringify({ query })
     });
 
-    renderResult(payload.success, payload.message || 'Operacion completada');
+    renderResult(payload.success, payload.message || 'Operacion completada', payload.data);
     renderTokens(payload.tokens || []);
     await loadLogs();
   } catch {

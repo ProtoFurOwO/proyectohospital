@@ -10,6 +10,7 @@ from datetime import date
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from log_emitter import emit_log_bg
+from .db import init_db, close_db, get_pool
 
 app = FastAPI(
     title="Servicio de Expedientes Clinicos",
@@ -17,7 +18,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,6 +25,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
 
 # Modelos
 class Estudio(BaseModel):
@@ -312,19 +320,64 @@ async def get_catalogos_expedientes():
     catalogos["estados_estudio"] = ESTADOS_ESTUDIO
     return catalogos
 
-@app.get("/expedientes", response_model=List[Expediente])
+@app.get("/expedientes")
 async def get_expedientes():
-    """Obtiene todos los expedientes"""
-    return expedientes_db
+    """Obtiene todos los expedientes desde PostgreSQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        records = await conn.fetch("SELECT * FROM historias_clinicas LIMIT 50")
+        
+    resultado = []
+    for record in records:
+        data = dict(record)
+        # Adaptar el esquema SQL al frontend React
+        resultado.append({
+            "id": data["id"],
+            "paciente_id": data["id"],
+            "numero_expediente_clinico": data["num_expediente"],
+            "nombre": data["nombre_paciente"],
+            "sexo": data["sexo"],
+            "edad_anos": data["edad"],
+            "fecha_nacimiento": "N/A",
+            "diagnostico_preoperatorio": data["dx_preoperatorio"],
+            "diagnostico_postoperatorio": data["dx_postoperatorio"],
+            "tiene_preproceso": True,
+            "estudios": [],
+            "alergias": []
+        })
+    return resultado
 
 
-@app.get("/expedientes/numero/{numero_expediente}", response_model=Expediente)
+@app.get("/expedientes/numero/{numero_expediente}")
 async def get_expediente_por_numero(numero_expediente: str):
-    """Busca expediente por numero de expediente clinico"""
-    for exp in expedientes_db:
-        if exp.numero_expediente_clinico.upper() == numero_expediente.upper():
-            return exp
-    raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    """Busca expediente por numero clinico en PostgreSQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        record = await conn.fetchrow("SELECT * FROM historias_clinicas WHERE num_expediente = $1", numero_expediente)
+        if not record:
+            raise HTTPException(status_code=404, detail="Expediente no encontrado")
+            
+    data = dict(record)
+    return {
+        "id": data["id"],
+        "paciente_id": data["id"],
+        "numero_expediente_clinico": data["num_expediente"],
+        "nombre": data["nombre_paciente"],
+        "sexo": data["sexo"],
+        "edad_anos": data["edad"],
+        "fecha_nacimiento": "N/A",
+        "diagnostico_preoperatorio": data["dx_preoperatorio"],
+        "diagnostico_postoperatorio": data["dx_postoperatorio"],
+        "tiene_preproceso": True,
+        "estudios": [],
+        "alergias": []
+    }
 
 @app.get("/expedientes/paciente/{paciente_id}", response_model=Expediente)
 async def get_expediente_por_paciente(paciente_id: int):

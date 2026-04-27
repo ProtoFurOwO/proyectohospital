@@ -280,6 +280,23 @@ func (s *SemanticAnalyzer) RegisterDatabase(name string, port int, engine string
 	s.usedPorts[port] = name
 }
 
+// RegisterExternalDatabase registra una base externa con tablas conocidas (sin puerto reservado).
+func (s *SemanticAnalyzer) RegisterExternalDatabase(name, engine string, tables []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	db := &DatabaseInfo{
+		Name:   name,
+		Port:   0,
+		Engine: engine,
+		Tables: make(map[string][]ColumnDef),
+	}
+	for _, table := range tables {
+		db.Tables[table] = []ColumnDef{}
+	}
+	s.databases[name] = db
+}
+
 // RegisterTable registra una nueva tabla
 func (s *SemanticAnalyzer) RegisterTable(tableName string, columns []ColumnDef) {
 	s.mu.Lock()

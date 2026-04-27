@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+import re
 from typing import Optional, List
 import os, sys
 
@@ -13,6 +14,8 @@ import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from log_emitter import emit_log_bg
+from .db import init_db, close_db, get_pool
+import aiomysql
 
 app = FastAPI(
     title="Servicio de Citas Medicas",
@@ -28,6 +31,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
 
 EXPEDIENTES_SERVICE_URL = os.getenv("EXPEDIENTES_SERVICE_URL", "http://localhost:8002")
 
@@ -96,63 +107,7 @@ CATALOGOS_CITAS = {
     ]
 }
 
-# Datos de ejemplo - Sincronizados con Personal
-citas_db: List[Cita] = [
-    # Turno Mañana
-    Cita(
-        id=1, paciente_id=1, paciente_nombre="Juan Perez",
-        numero_expediente_clinico="EXP-1001",
-        medico_id=2, medico_nombre="Dr. Garcia 2",
-        quirofano_id=5, tipo_cirugia="Apendicitis", estado="programada",
-        turno="manana", fecha_cita=datetime.now().replace(hour=8, minute=0),
-        division_quirurgica="Cirugia General",
-        complejidad_evento="Menor",
-        urgencia_intervencion="Urgencia",
-        responsable_anestesia="Dr. Kim"
-    ),
-    Cita(
-        id=2, paciente_id=2, paciente_nombre="Maria Lopez",
-        numero_expediente_clinico="EXP-1002",
-        medico_id=2, medico_nombre="Dr. Garcia 2",
-        quirofano_id=12, tipo_cirugia="Colecistitis", estado="programada",
-        turno="manana", fecha_cita=datetime.now().replace(hour=12, minute=0),
-        division_quirurgica="Gastroenterologia",
-        complejidad_evento="Mayor",
-        urgencia_intervencion="Electiva",
-        responsable_anestesia="Dra. Lee"
-    ),
-    Cita(
-        id=3, paciente_id=3, paciente_nombre="Carlos Ruiz",
-        numero_expediente_clinico="EXP-1003",
-        medico_id=8, medico_nombre="Dr. Martinez 8",
-        quirofano_id=3, tipo_cirugia="Fractura de femur", estado="programada",
-        turno="manana", fecha_cita=datetime.now().replace(hour=8, minute=0),
-        division_quirurgica="Traumatologia",
-        complejidad_evento="Mayor",
-        urgencia_intervencion="Urgencia",
-        responsable_anestesia="Dr. Sue"
-    ),
-    # Turno Tarde
-    Cita(
-        id=4, paciente_id=4, paciente_nombre="Ana Torres",
-        medico_id=3, medico_nombre="Dr. Lopez 3",
-        quirofano_id=7, tipo_cirugia="Traumatologia", estado="programada",
-        turno="tarde", fecha_cita=datetime.now().replace(hour=16, minute=0)
-    ),
-    Cita(
-        id=5, paciente_id=5, paciente_nombre="Roberto Gomez",
-        medico_id=9, medico_nombre="Dr. Hernandez 9",
-        quirofano_id=15, tipo_cirugia="Neurologia", estado="programada",
-        turno="tarde", fecha_cita=datetime.now().replace(hour=20, minute=0)
-    ),
-    # Turno Noche
-    Cita(
-        id=6, paciente_id=6, paciente_nombre="Laura Diaz",
-        medico_id=4, medico_nombre="Dr. Hernandez 4",
-        quirofano_id=20, tipo_cirugia="Neurologia", estado="programada",
-        turno="noche", fecha_cita=datetime.now().replace(hour=0, minute=0)
-    ),
-]
+# La base de datos en RAM fue eliminada en favor de MySQL (citas_legacy)
 
 
 async def _expedientes_get(path: str, params: Optional[dict] = None):
@@ -208,7 +163,62 @@ async def get_catalogos_citas():
     """Catalogos base para interfaz administrativa de citas"""
     return CATALOGOS_CITAS
 
-@app.get("/citas", response_model=List[Cita])
+DEFAULT_FECHA_LEGACY = "2026-04-27T08:00:00"
+
+def parsear_fecha_legacy(fecha_str: Optional[str]) -> str:
+    if not fecha_str:
+        return DEFAULT_FECHA_LEGACY
+
+    raw = str(fecha_str).strip()
+    if not raw:
+        return DEFAULT_FECHA_LEGACY
+
+    cleaned = raw.replace("\\", "/")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"\b(a\.?m\.?)\b", "AM", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(p\.?m\.?)\b", "PM", cleaned, flags=re.IGNORECASE)
+
+    if "T" in cleaned:
+        try:
+            return datetime.fromisoformat(cleaned).isoformat()
+        except ValueError:
+            pass
+
+    formatos = [
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M",
+        "%d/%m/%Y %H:%M",
+        "%d-%m-%Y %H:%M",
+        "%Y-%m-%d %I:%M %p",
+        "%Y/%m/%d %I:%M %p",
+        "%d/%m/%Y %I:%M %p",
+        "%d-%m-%Y %I:%M %p",
+        "%Y-%m-%d %I:%M:%S %p",
+        "%Y/%m/%d %I:%M:%S %p",
+        "%d/%m/%Y %I:%M:%S %p",
+        "%d-%m-%Y %I:%M:%S %p",
+    ]
+
+    for fmt in formatos:
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+            if "H" not in fmt and "I" not in fmt:
+                parsed = parsed.replace(hour=8, minute=0, second=0, microsecond=0)
+            return parsed.isoformat()
+        except ValueError:
+            continue
+
+    return DEFAULT_FECHA_LEGACY
+
+@app.get("/citas")
 async def get_citas(
     turno: Optional[str] = None,
     estado: Optional[str] = None,
@@ -216,32 +226,75 @@ async def get_citas(
     fecha: Optional[str] = Query(None, description="YYYY-MM-DD"),
     numero_expediente: Optional[str] = None
 ):
-    """Obtiene todas las citas con filtros opcionales"""
-    resultado = citas_db
-
-    if turno:
-        resultado = [c for c in resultado if c.turno == turno]
-    if estado:
-        resultado = [c for c in resultado if c.estado == estado]
-    if medico_id:
-        resultado = [c for c in resultado if c.medico_id == medico_id]
-    if fecha:
-        resultado = [c for c in resultado if c.fecha_cita.date().isoformat() == fecha]
-    if numero_expediente:
-        resultado = [
-            c for c in resultado
-            if c.numero_expediente_clinico and c.numero_expediente_clinico.upper() == numero_expediente.upper()
-        ]
-
+    """Obtiene todas las citas desde MySQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT * FROM citas_legacy LIMIT 50")
+            result = await cur.fetchall()
+            
+    resultado = []
+    for data in result:
+        paciente_nombre = data.get("paciente_nombre") or data.get("nombre_paciente") or f"Paciente {data['id']}"
+        numero_expediente = data.get("numero_expediente_clinico") or data.get("numero_expediente") or f"EXP-{data['id']}"
+        resultado.append({
+            "id": data["id"],
+            "paciente_id": data["id"],
+            "paciente_nombre": paciente_nombre,
+            "numero_expediente_clinico": numero_expediente,
+            "medico_id": None,
+            "medico_nombre": "Por asignar",
+            "quirofano_id": None,
+            "fecha_cita": parsear_fecha_legacy(data["fecha_solicitud"]),
+            "tipo_cirugia": data["cirugia_programada"],
+            "division_quirurgica": "General",
+            "complejidad_evento": data["complejidad"],
+            "urgencia_intervencion": data["urgencia"],
+            "responsable_anestesia": "N/A",
+            "turno": "manana",
+            "es_urgencia": data["urgencia"] == "Urgencia",
+            "estado": "programada"
+        })
     return resultado
 
-@app.get("/citas/{cita_id}", response_model=Cita)
+@app.get("/citas/{cita_id}")
 async def get_cita(cita_id: int):
-    """Obtiene una cita por ID"""
-    for cita in citas_db:
-        if cita.id == cita_id:
-            return cita
-    raise HTTPException(status_code=404, detail="Cita no encontrada")
+    """Obtiene una cita por ID desde MySQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT * FROM citas_legacy WHERE id=%s", (cita_id,))
+            data = await cur.fetchone()
+            if not data:
+                raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+            paciente_nombre = data.get("paciente_nombre") or data.get("nombre_paciente") or f"Paciente {data['id']}"
+            numero_expediente = data.get("numero_expediente_clinico") or data.get("numero_expediente") or f"EXP-{data['id']}"
+                
+            return {
+                "id": data["id"],
+                "paciente_id": data["id"],
+                "paciente_nombre": paciente_nombre,
+                "numero_expediente_clinico": numero_expediente,
+                "medico_id": None,
+                "medico_nombre": "Por asignar",
+                "quirofano_id": None,
+                "fecha_cita": parsear_fecha_legacy(data["fecha_solicitud"]),
+                "tipo_cirugia": data["cirugia_programada"],
+                "division_quirurgica": "General",
+                "complejidad_evento": data["complejidad"],
+                "urgencia_intervencion": data["urgencia"],
+                "responsable_anestesia": "N/A",
+                "turno": "manana",
+                "es_urgencia": data["urgencia"] == "Urgencia",
+                "estado": "programada"
+            }
 
 @app.post("/citas/programar")
 async def programar_cita(cita: CitaCreate):
@@ -295,38 +348,36 @@ async def programar_cita(cita: CitaCreate):
     urgencia_intervencion = cita.urgencia_intervencion or (expediente_data.get("tipo_cirugia_urgencia") if expediente_data else None)
     responsable_anestesia = cita.responsable_anestesia or (expediente_data.get("responsable_anestesia") if expediente_data else None)
 
-    nueva_cita = Cita(
-        id=len(citas_db) + 1,
-        paciente_id=paciente_id,
-        paciente_nombre=cita.paciente_nombre,
-        numero_expediente_clinico=numero_expediente,
-        medico_id=cita.medico_id,
-        medico_nombre=medico_nombre,
-        fecha_cita=cita.fecha_cita,
-        tipo_cirugia=tipo_cirugia,
-        division_quirurgica=division_quirurgica,
-        complejidad_evento=complejidad_evento,
-        urgencia_intervencion=urgencia_intervencion,
-        responsable_anestesia=responsable_anestesia,
-        turno=turno_final,
-        es_urgencia=cita.es_urgencia,
-        requiere_expediente=cita.requiere_expediente,
-        estado="programada",
-        origen_programacion=(
-            "admision-integrada"
-            if expediente_data
-            else ("cita-sin-expediente-autoid" if paciente_id_auto else "flujo-cita-primero")
-        )
-    )
-    citas_db.append(nueva_cita)
+    # Insertar en MySQL
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # Insertar en la base de datos (se usa un esquema genérico para demostración de refactorización AWS)
+            # En un despliegue de AWS se requerirá asegurar que la tabla tenga todas estas columnas
+            await cur.execute("""
+                INSERT INTO citas_legacy (fecha_solicitud, cirugia_programada, complejidad, urgencia) 
+                VALUES (%s, %s, %s, %s)
+            """, (
+                cita.fecha_cita.isoformat(), 
+                tipo_cirugia, 
+                complejidad_evento or 'N/A', 
+                urgencia_intervencion or 'N/A'
+            ))
+            await conn.commit()
 
     emit_log_bg("INFO", "CITAS", "CREATE", "PACIENTE", f"{cita.paciente_nombre}_ID{paciente_id}")
 
     return {
         "success": True,
-        "message": "Cita programada exitosamente",
-        "data": nueva_cita,
-        "validacion_expediente": None,
+        "message": "Cita programada exitosamente en MySQL AWS Ready",
+        "data": {
+            "fecha_cita": cita.fecha_cita.isoformat(),
+            "tipo_cirugia": tipo_cirugia,
+            "paciente": cita.paciente_nombre
+        },
         "warning": warning
     }
 
@@ -373,21 +424,36 @@ async def asignacion_quirurgica_cita(cita_id: int, asignacion: CitaAsignacionQui
 @app.post("/citas/{cita_id}/cancelar")
 async def cancelar_cita(cita_id: int):
     """Cancela una cita"""
-    for cita in citas_db:
-        if cita.id == cita_id:
-            cita.estado = "cancelada"
-            emit_log_bg("WARN", "CITAS", "DELETE", "PACIENTE", f"{cita.paciente_nombre}_cita{cita_id}")
-            return {"success": True, "message": "Cita cancelada", "data": cita}
-    raise HTTPException(status_code=404, detail="Cita no encontrada")
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            affected = await cur.execute("DELETE FROM citas_legacy WHERE id=%s", (cita_id,))
+            await conn.commit()
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cita no encontrada")
+                
+    emit_log_bg("WARN", "CITAS", "DELETE", "PACIENTE", f"cita_{cita_id}")
+    return {"success": True, "message": "Cita cancelada"}
 
 @app.post("/citas/{cita_id}/reprogramar")
 async def reprogramar_cita(cita_id: int, nueva_fecha: datetime):
     """Reprograma una cita"""
-    for cita in citas_db:
-        if cita.id == cita_id:
-            cita.fecha_cita = nueva_fecha
-            return {"success": True, "message": "Cita reprogramada", "data": cita}
-    raise HTTPException(status_code=404, detail="Cita no encontrada")
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            affected = await cur.execute("UPDATE citas_legacy SET fecha_solicitud=%s WHERE id=%s", (nueva_fecha.isoformat(), cita_id))
+            await conn.commit()
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cita no encontrada")
+                
+    emit_log_bg("INFO", "CITAS", "UPDATE", "PACIENTE", f"reprogramar_cita_{cita_id}")
+    return {"success": True, "message": "Cita reprogramada"}
 
 @app.get("/citas/estadisticas/resumen")
 async def estadisticas():
@@ -403,5 +469,5 @@ async def estadisticas():
 
 if __name__ == "__main__":
     import uvicorn
-    print("📅 Servicio de Citas Medicas iniciado en puerto 8001 (MySQL)")
+    print("[CITAS] Servicio de Citas Medicas iniciado en puerto 8001 (MySQL)")
     uvicorn.run(app, host="0.0.0.0", port=8001)

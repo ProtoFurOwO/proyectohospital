@@ -164,6 +164,19 @@ function SqlTerminal() {
                 {result.success ? 'EXITO' : 'ERROR'}
               </div>
               <div style={{ color: '#36546f' }}>{result.message}</div>
+              {result.data && (
+                <pre style={{
+                  marginTop: '0.6rem',
+                  background: 'rgba(10,120,181,0.06)',
+                  borderRadius: '6px',
+                  padding: '0.6rem',
+                  color: '#1f435f',
+                  fontSize: '0.8rem',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {JSON.stringify(result.data, null, 2)}
+                </pre>
+              )}
             </div>
           )}
 

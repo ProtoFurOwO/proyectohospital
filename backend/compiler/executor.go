@@ -197,15 +197,19 @@ func (e *Executor) executeUseDatabase(ast *ASTNode) *ExecutionResult {
 
 func (e *Executor) executeShowDatabases() *ExecutionResult {
 	databases := e.analyzer.GetDatabases()
-	names := make([]string, 0, len(databases))
-	for name := range databases {
-		names = append(names, name)
+	items := make([]map[string]interface{}, 0, len(databases))
+	for name, info := range databases {
+		items = append(items, map[string]interface{}{
+			"name":   name,
+			"engine": info.Engine,
+			"port":   info.Port,
+		})
 	}
 
 	return &ExecutionResult{
 		Success:   true,
-		Message:   fmt.Sprintf("Se encontraron %d bases de datos", len(names)),
-		Data:      names,
+		Message:   fmt.Sprintf("Se encontraron %d bases de datos", len(items)),
+		Data:      items,
 		Timestamp: time.Now(),
 	}
 }
@@ -243,10 +247,20 @@ func (e *Executor) executeInsert(ast *ASTNode) *ExecutionResult {
 }
 
 func (e *Executor) executeSelect(ast *ASTNode) *ExecutionResult {
+	currentDB := e.analyzer.GetCurrentDB()
+	results, err := ExecuteGenericQuery(currentDB, ast.Name)
+	if err != nil {
+		return &ExecutionResult{
+			Success:   false,
+			Message:   fmt.Sprintf("Error ejecutando consulta en '%s': %v", ast.Name, err),
+			Timestamp: time.Now(),
+		}
+	}
+
 	return &ExecutionResult{
 		Success:   true,
-		Message:   fmt.Sprintf("Consulta ejecutada en '%s'", ast.Name),
-		Data:      []string{}, // Aquí irían los resultados reales
+		Message:   fmt.Sprintf("Consulta ejecutada en '%s'. %d registros obtenidos.", ast.Name, len(results)),
+		Data:      results,
 		Timestamp: time.Now(),
 	}
 }

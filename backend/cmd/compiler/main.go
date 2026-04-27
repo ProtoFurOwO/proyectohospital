@@ -43,6 +43,10 @@ func main() {
 
 	logStore = loganalyzer.NewLogStore()
 
+	// Iniciar conexiones a DBs (Universal SQL Engine)
+	compiler.InitDatabases()
+	compiler.SeedSystemDatabases(sqlSvc.executor.GetAnalyzer())
+
 	mux := http.NewServeMux()
 	cors := corsMiddleware
 

@@ -10,6 +10,7 @@ from datetime import date, datetime
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from log_emitter import emit_log_bg
+from .db import init_db, close_db, get_pool
 
 app = FastAPI(
     title="Servicio de Personal Medico",
@@ -26,16 +27,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
+
 # Modelos
 class Medico(BaseModel):
-    id: int
+    id: Optional[int] = None
     nombre: str
     especialidad: str
     turno: str
-    operaciones_hoy: int
-    max_operaciones: int
-    disponible: bool
-    equipo: List[str]
+    operaciones_hoy: int = 0
+    max_operaciones: int = 2
+    disponible: bool = True
     ultima_operacion: Optional[str] = None
     dias_sin_operar: int = 0
 
@@ -937,7 +945,39 @@ async def turnos():
         }
     }
 
+@app.post("/personal/medicos")
+async def crear_medico(medico: Medico):
+    """Registrar un nuevo médico en la base de datos"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        new_id = await conn.fetchval('''
+            INSERT INTO medicos (nombre, especialidad, turno)
+            VALUES ($1, $2, $3) RETURNING id
+        ''', medico.nombre, medico.especialidad, medico.turno)
+        
+    emit_log_bg("INFO", "PERSONAL", "CREATE", "MEDICO", f"ID_{new_id}_{medico.nombre.replace(' ', '_')}")
+    return {"success": True, "id": new_id, "message": "Médico registrado exitosamente"}
+
+@app.delete("/personal/medicos/{medico_id}")
+async def eliminar_medico(medico_id: int):
+    """Eliminar un médico de la base de datos"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        status = await conn.execute('DELETE FROM medicos WHERE id = $1', medico_id)
+        
+    if status == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Médico no encontrado")
+        
+    emit_log_bg("WARN", "PERSONAL", "DELETE", "MEDICO", f"ID_{medico_id}")
+    return {"success": True, "message": "Médico eliminado"}
+
 if __name__ == "__main__":
     import uvicorn
-    print("👨‍⚕️ Servicio de Personal Medico v2.0 - Con rotación diaria")
+    print("👨‍⚕️ Servicio de Personal Medico v2.0 - Con PostgreSQL")
     uvicorn.run(app, host="0.0.0.0", port=8005)

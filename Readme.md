@@ -1,244 +1,136 @@
-# Sistema Hospitalario Distribuido + Motor SQL
+# 🏥 Sistema Hospitalario Distribuido + Motor SQL
 
 **Alumno:** Jose Antonio Matuz Argueta - 6N - 100019199
 **Proyecto Final:** Taller 4 (Microservicios) + Compiladores (Motor SQL)
 
 ---
 
-## Descripcion
+## 🌟 Descripción General
 
-Sistema de gestion hospitalaria con:
-- **4 Microservicios FastAPI** (Python) - cada uno con su base de datos
-- **1 Servicio Go de Quirofanos** (operacion hospitalaria)
-- **1 Servicio Go de Compiladores** (Motor SQL separado)
-- **Motor SQL** con analizador lexico, sintactico y semantico
-- **Dashboard React** de 30 quirofanos con estados en tiempo real
-- **UI SQL independiente** en otro puerto
+Este proyecto representa una infraestructura de salud moderna y escalable, construida bajo una **Arquitectura de Microservicios Distribuidos**. El sistema gestiona desde citas médicas y expedientes clínicos hasta la orquestación en tiempo real de 30 quirófanos y el control de inventarios.
 
----
-
-## Arquitectura
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND (React/Vite)                    │
-│                         Dashboard Admin                           │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-          ┌───────────┬───────────┼───────────┬───────────┐
-          ▼           ▼           ▼           ▼           ▼
-     ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-     │ FastAPI │ │ FastAPI │ │   Go    │ │ FastAPI │ │FastAPI  │
-     │  :8001  │ │  :8002  │ │  :8003  │ │  :8004  │ │ :8005   │
-     │  Citas  │ │Expedient│ │Quirofano│ │ Insumos │ │Personal  │
-     └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘
-          │           │           │           │           │
-     ┌────▼────┐ ┌────▼────┐ ┌────▼────┐ ┌────▼────┐ ┌────▼────┐
-     │  MySQL  │ │PostgreSQL│ │ MariaDB │ │ MongoDB │ │  Redis  │
-     │  :3306  │ │  :5432  │ │  :3307  │ │ :27017  │ │  :6379  │
-     └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                   COMPILADORES (Go + UI propia)                │
-│                    Motor SQL separado :8006                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Componentes Clave:
+- **6 Microservicios Autónomos:** Desarrollados en **Python (FastAPI)** y **Go**, garantizando alto rendimiento y concurrencia.
+- **Persistencia Multi-Base de Datos:** Implementación de **MySQL, PostgreSQL, MariaDB, MongoDB y Redis**, cada uno optimizado para su caso de uso específico.
+- **Motor SQL Nativo:** Un compilador completo (Léxico, Sintáctico y Semántico) desarrollado en Go para gestionar la lógica de datos de forma independiente.
+- **Dashboard de Control:** Interfaz administrativa moderna en **React 18** con actualizaciones en tiempo real.
 
 ---
 
-## Inicio Rapido
+## 🏗️ Arquitectura del Sistema
 
-### 1. Instalar dependencias Python
+El sistema opera en una red de contenedores Docker, aislando cada servicio y su respectiva capa de persistencia:
+
+```mermaid
+graph TD
+    subgraph Frontend
+        A[React Admin Dashboard]
+    end
+
+    subgraph "Microservicios (Puertos)"
+        S1[Citas :8001]
+        S2[Expedientes :8002]
+        S3[Quirofanos :8003]
+        S4[Insumos :8004]
+        S5[Personal :8005]
+        S6[Motor SQL :8006]
+    end
+
+    subgraph "Persistencia (Docker)"
+        D1[(MySQL)]
+        D2[(PostgreSQL)]
+        D3[(MariaDB)]
+        D4[(MongoDB)]
+        D5[(Redis)]
+    end
+
+    A --> S1 & S2 & S3 & S4 & S5 & S6
+    S1 --> D1
+    S2 --> D2
+    S3 --> D3
+    S4 --> D4
+    S5 --> D5
+```
+
+---
+
+## 🚀 Inicio Rápido (Local)
+
+### 1. Requisitos Previos
+- Docker Desktop
+- Python 3.10+
+- Go 1.21+
+- Node.js 18+
+
+### 2. Configuración del Entorno
 ```bash
-# Activar el entorno virtual
-.\.venv\Scripts\Activate.ps1
-
-# Instalar dependencias
+# 1. Clonar y preparar entorno Python
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 2. Levantar Bases de Datos (Docker)
-```bash
+# 2. Levantar la infraestructura de Bases de Datos
 docker-compose up -d
+
+# 3. Poblar datos iniciales (Seed)
+python scripts/seed_5dbs.py
 ```
 
-### 3. Iniciar Todos los Servicios
-
-**Forma facil (Windows):**
+### 3. Ejecución Masiva
+Para facilitar el despliegue en desarrollo, utiliza el script automatizado:
+```bash
+# Ejecuta todos los microservicios en background
+.\start.bat
 ```
-Doble click en: start.bat
-```
 
-Todos los servicios correran en background. Presiona cualquier tecla para detenerlos.
-
-### 4. Iniciar Frontend
+### 4. Lanzar Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Abrir: http://localhost:5173
+---
 
-### 5. Abrir Compiladores (Servicio separado)
-- UI: http://localhost:8006
-- Health: http://localhost:8006/health
+## 🛠️ Stack Tecnológico
+
+| Servicio | Tecnología | Base de Datos | Puerto |
+| :--- | :--- | :--- | :--- |
+| **Citas** | FastAPI | MySQL 8.0 | 8001 |
+| **Expedientes** | FastAPI | PostgreSQL 15 | 8002 |
+| **Quirofanos** | Go (Gin) | MariaDB 10.11 | 8003 |
+| **Insumos** | FastAPI | MongoDB 6.0 | 8004 |
+| **Personal** | FastAPI | Redis 7.0 | 8005 |
+| **Motor SQL** | Go | Memoria/FS | 8006 |
 
 ---
 
-## Documentacion API (Swagger)
+## 🧠 Motor SQL (Compiladores)
 
-FastAPI genera documentacion automatica:
-- **Citas:** http://localhost:8001/docs
-- **Expedientes:** http://localhost:8002/docs
-- **Insumos:** http://localhost:8004/docs
-- **Personal:** http://localhost:8005/docs
+El motor SQL es una pieza de ingeniería que simula el comportamiento de un gestor de bases de datos relacional, implementando las fases críticas de compilación:
 
----
+1.  **Analizador Léxico:** Convierte el código SQL en tokens (claves, símbolos, cadenas, números).
+2.  **Analizador Sintáctico:** Valida la estructura gramatical (ej. `CREATE TABLE` debe seguir un orden específico).
+3.  **Analizador Semántico:** Verifica la lógica de negocio (existencia de tablas, tipos de datos compatibles).
+4.  **Ejecutor:** Procesa la consulta y persiste los cambios o retorna resultados.
 
-## Motor SQL (Compiladores)
-
-El motor SQL implementa las 3 fases del compilador:
-
-### Fase 1: Analisis Lexico
-Tokeniza la entrada en:
-- `clave` - Palabras reservadas (CREATE, DATABASE, TABLE...)
-- `normal` - Identificadores (nombres de tablas, columnas)
-- `simbolo` - Caracteres especiales (; , ( ) =)
-- `numero` - Valores numericos
-- `cadena` - Strings entre comillas
-
-### Fase 2: Analisis Sintactico
-Valida la gramatica:
-```
-CREATE DATABASE nombre;
-[clave] [clave]   [normal] [simbolo]  ✓ Valido
-
-DATABASE CREATE nombre;
-[clave]  [clave]  [normal]            ✗ Error sintactico
-```
-
-### Fase 3: Analisis Semantico
-Verifica logica:
-- ¿La base de datos ya existe?
-- ¿Hay una DB seleccionada para crear tablas?
+**Acceso:** `http://localhost:8006`
 
 ---
 
-## Endpoints API
+## 📡 Documentación y Pruebas
 
-### Citas (FastAPI - Puerto 8001)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | /citas | Lista todas las citas |
-| POST | /citas/programar | Programa nueva cita |
-| POST | /citas/{id}/cancelar | Cancela una cita |
+Cada microservicio expone su propia documentación interactiva mediante **Swagger UI**:
 
-### Expedientes (FastAPI - Puerto 8002)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | /expedientes | Lista expedientes |
-| GET | /expedientes/validar?paciente_id=X | Valida si puede operar |
-
-### Quirofanos (Go - Puerto 8003)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | /quirofanos | Lista 30 quirofanos |
-| POST | /quirofanos/:id/iniciar | Inicia cirugia |
-| POST | /quirofanos/:id/terminar | Termina cirugia |
-
-### Compiladores (Go - Puerto 8006)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | / | UI del motor SQL |
-| POST | /sql/execute | Ejecuta consulta SQL |
-| POST | /sql/tokenize | Solo tokeniza |
-| GET | /sql/logs | Consulta historial |
-| DELETE | /sql/logs | Limpia historial |
-
-### Insumos (FastAPI - Puerto 8004)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | /insumos | Lista insumos |
-| GET | /insumos/verificar/cirugia | Verifica disponibilidad |
-| GET | /insumos/alertas/stock-bajo | Alertas de stock |
-
-### Personal (FastAPI - Puerto 8005)
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| GET | /personal/medicos | Lista 60 medicos |
-| GET | /personal/disponibilidad | Resumen de disponibilidad |
-| GET | /personal/jineteo | Algoritmo de asignacion equitativa |
-| POST | /personal/portal/solicitar-turno | Solicitud de turno de doctor con fallback jineteo |
-| GET | /personal/portal/disponibilidad-turnos | Cupos disponibles por turno |
-| GET | /personal/portal/medico/{id}/resumen | Estado del doctor en portal |
-| GET | /personal/portal/solicitudes | Historial de solicitudes |
+- 📝 **Citas API:** [http://localhost:8001/docs](http://localhost:8001/docs)
+- 📂 **Expedientes API:** [http://localhost:8002/docs](http://localhost:8002/docs)
+- 📦 **Insumos API:** [http://localhost:8004/docs](http://localhost:8004/docs)
+- 👨‍⚕️ **Personal API:** [http://localhost:8005/docs](http://localhost:8005/docs)
 
 ---
 
-## Estructura del Proyecto
-
-```
-proyectocomtd4/
-├── docker-compose.yml          # 5 bases de datos
-├── requirements.txt            # Dependencias Python
-├── start.bat                   # Script de inicio
-├── services/                   # Microservicios FastAPI
-│   ├── citas/main.py           # MySQL :8001
-│   ├── expedientes/main.py     # PostgreSQL :8002
-│   ├── insumos/main.py         # MongoDB :8004
-│   └── personal/main.py        # Redis :8005
-├── backend/                    # Servicio Go
-│   ├── cmd/quirofanos/         # Quirofanos :8003
-│   ├── cmd/compiler/           # Compiladores + UI SQL :8006
-│   └── compiler/               # Motor SQL
-│       ├── lexer.go            # Analizador Lexico
-│       ├── parser.go           # Analizador Sintactico
-│       ├── semantic.go         # Analizador Semantico
-│       └── executor.go         # Ejecutor
-└── frontend/                   # React + Vite
-    └── src/
-        ├── pages/
-        │   ├── Dashboard.jsx
-        │   ├── AsignacionMedicos.jsx
-        │   ├── Horarios.jsx
-        │   └── DoctorPortal.jsx
-        └── components/
-            ├── QuirofanoCard.jsx
-            ├── TokenTable.jsx
-            └── LogConsole.jsx
-```
+## ☁️ Notas de Despliegue (AWS/Ubuntu)
+El sistema está diseñado para ser desplegado en una instancia de **Ubuntu Server** mediante **Docker Compose**. Todas las URLs de conexión a bases de datos están parametrizadas mediante variables de entorno en los archivos `.env` y el `docker-compose.yml`.
 
 ---
-
-## Tecnologias
-
-| Componente | Tecnologia |
-|------------|------------|
-| Microservicios | **FastAPI** (Python) |
-| Motor SQL | **Go** |
-| Frontend | React 18 + Vite 5 |
-| BD Citas | MySQL 8 |
-| BD Expedientes | PostgreSQL 15 |
-| BD Quirofanos | MariaDB 10 |
-| BD Insumos | MongoDB 6 |
-| BD Personal | Redis 7 |
-| Contenedores | Docker Compose |
-
----
-
-## Verificacion
-
-1. Activar venv: `.\.venv\Scripts\activate`
-2. Levantar Docker: `docker-compose up -d` (opcional)
-3. **Iniciar servicios: Doble click en `start.bat`**
-4. Verificar APIs:
-   - http://localhost:8001/docs (Citas - Swagger)
-   - http://localhost:8002/docs (Expedientes - Swagger)
-   - http://localhost:8003/health (Quirofanos)
-  - http://localhost:8006/health (Compiladores)
-   - http://localhost:8004/docs (Insumos - Swagger)
-   - http://localhost:8005/docs (Personal - Swagger)
-5. Frontend: `cd frontend && npm run dev`
-6. Abrir Admin + Portal Doctores: http://localhost:5173
-7. Abrir Compiladores: http://localhost:8006
+*Proyecto desarrollado con fines académicos para la asignatura de Taller 4 y Compiladores.*
