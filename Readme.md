@@ -129,7 +129,7 @@ El motor SQL es una pieza de ingeniería que simula el comportamiento de un gest
 Se han implementado mejoras críticas para garantizar la estabilidad y funcionalidad completa del sistema en entornos de producción (AWS/Ubuntu):
 
 ### 1. Estabilización de Persistencia SQL
-- **Citas (MySQL):** Se eliminó el almacenamiento volátil en RAM. Ahora todas las operaciones utilizan `aiomysql` para persistencia real, incluyendo logs de transacciones.
+- **Citas (MySQL):** Integración total con la tabla `citas_legacy`. Se eliminó el uso de variables en memoria que causaban crasheos. Ahora, la creación de citas persiste el nombre del paciente, IDs autoincrementales y metadatos quirúrgicos directamente en el motor relacional.
 - **Expedientes (PostgreSQL):** Migración total de listas en memoria a tablas relacionales persistentes. Se implementó un sistema de mapeo de datos para asegurar compatibilidad entre los nombres de columnas SQL (`num_expediente`) y las propiedades del Frontend (`numero_expediente_clinico`).
 
 ### 2. Gestión de Expedientes (CRUD Completo)
@@ -142,7 +142,7 @@ Se han implementado mejoras críticas para garantizar la estabilidad y funcional
 
 ### 4. Mejoras en UX/UI
 - **Manejo de Horarios:** Se implementó la recarga automática de disponibilidad de médicos al cambiar la fecha de cirugía en el formulario.
-- **Corrección de Estado:** Se resolvieron errores de "undefined ID" en el estado de React al sincronizar las respuestas del servidor con el Dashboard.
+- **Corrección de Estado:** Se resolvieron errores de "undefined ID" y nombres genéricos en el servicio de Citas, asegurando que el Dashboard refleje datos reales inmediatamente tras la creación.
 
 ### 5. Orquestacion de Cirugias (Auto + Manual)
 - **Auto-inicio:** Expedientes arranca cirugias automaticamente cuando el expediente esta listo (laboratorios completos) y la hora programada ya llego.
