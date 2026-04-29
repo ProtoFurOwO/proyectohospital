@@ -5,15 +5,12 @@ const ESPECIALIDADES = [
   "Oftalmologia", "Neurologia", "Oncologia", "Pediatria", "Ginecologia"
 ]
 
-const TURNOS = ["manana", "tarde", "noche"]
-
 export default function AdminMedicos() {
   const [medicos, setMedicos] = useState([])
   const [loading, setLoading] = useState(true)
   const [formData, setFormData] = useState({
     nombre: '',
-    especialidad: ESPECIALIDADES[0],
-    turno: TURNOS[0]
+    especialidad: ESPECIALIDADES[0]
   })
   const [mensaje, setMensaje] = useState(null)
 
@@ -22,10 +19,16 @@ export default function AdminMedicos() {
       const res = await fetch('http://localhost:8005/personal/medicos')
       if (res.ok) {
         const data = await res.json()
-        setMedicos(data)
+        setMedicos(Array.isArray(data) ? data : [])
+      } else {
+        const data = await res.json().catch(() => null)
+        setMensaje({ type: 'error', text: data?.detail || 'No se pudieron cargar los medicos' })
+        setMedicos([])
       }
     } catch (err) {
       console.error("Error cargando medicos:", err)
+      setMensaje({ type: 'error', text: 'Error de conexión al cargar' })
+      setMedicos([])
     } finally {
       setLoading(false)
     }
@@ -42,16 +45,26 @@ export default function AdminMedicos() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
+      const payload = {
+        nombre: formData.nombre,
+        especialidad: formData.especialidad
+      }
       const res = await fetch('http://localhost:8005/personal/medicos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       })
-      const data = await res.json()
-      if (data.success) {
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setMensaje({ type: 'error', text: data?.detail || 'No se pudo registrar el medico' })
+        return
+      }
+      if (data?.success) {
         setMensaje({ type: 'success', text: `Medico registrado con ID: ${data.id}` })
-        setFormData({ nombre: '', especialidad: ESPECIALIDADES[0], turno: TURNOS[0] })
+        setFormData({ nombre: '', especialidad: ESPECIALIDADES[0] })
         fetchMedicos() // Recargar lista
+      } else {
+        setMensaje({ type: 'error', text: data?.detail || 'No se pudo registrar el medico' })
       }
     } catch (err) {
       setMensaje({ type: 'error', text: 'Error de conexión al guardar' })
@@ -100,7 +113,7 @@ export default function AdminMedicos() {
                 required 
                 value={formData.nombre} 
                 onChange={handleInputChange} 
-                placeholder="Ej. Dr. Juan Perez"
+                placeholder="Ej. Juan Perez"
               />
             </div>
 
@@ -108,15 +121,6 @@ export default function AdminMedicos() {
               <label>Especialidad</label>
               <select name="especialidad" className="select" value={formData.especialidad} onChange={handleInputChange}>
                 {ESPECIALIDADES.map(esp => <option key={esp} value={esp}>{esp}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Turno Principal</label>
-              <select name="turno" className="select" value={formData.turno} onChange={handleInputChange}>
-                <option value="manana">☀️ Mañana</option>
-                <option value="tarde">🌇 Tarde</option>
-                <option value="noche">🌙 Noche</option>
               </select>
             </div>
 
@@ -140,7 +144,7 @@ export default function AdminMedicos() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>Cargando desde PostgreSQL...</td></tr>
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem' }}>Cargando desde Redis...</td></tr>
               ) : medicos.length === 0 ? (
                 <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>No hay médicos registrados. ¡Agrega uno!</td></tr>
               ) : (
@@ -152,7 +156,7 @@ export default function AdminMedicos() {
                       <span className="badge badge-info">{medico.especialidad}</span>
                     </td>
                     <td style={{ padding: '0.5rem' }}>
-                      <span className="badge badge-warning">{medico.turno}</span>
+                      <span className="badge badge-warning">{medico.turno || 'pendiente'}</span>
                     </td>
                     <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                       <button onClick={() => handleDelete(medico.id)} className="button button-danger" style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}>

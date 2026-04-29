@@ -8,9 +8,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
 import sys, os
+import re
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from log_emitter import emit_log_bg
-from .db import init_db, close_db, get_pool
+from .db import init_db, close_db, get_client
 
 app = FastAPI(
     title="Servicio de Personal Medico",
@@ -30,6 +31,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     await init_db()
+    await sync_medicos_con_redis()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -40,7 +42,7 @@ class Medico(BaseModel):
     id: Optional[int] = None
     nombre: str
     especialidad: str
-    turno: str
+    turno: Optional[str] = None
     operaciones_hoy: int = 0
     max_operaciones: int = 2
     disponible: bool = True
@@ -145,8 +147,16 @@ solicitud_turno_id_seq = 1
 fecha_actual = str(date.today())
 fecha_base_rotacion = date.today()
 
+MEDICO_REDIS_PREFIX = "personal:medico:"
+MEDICO_IDS_KEY = "personal:medicos:ids"
+MEDICO_SEQ_KEY = "personal:medicos:seq"
+
 # Generar 60 medicos
 nombres_base = [
+    "Juan", "Maria", "Carlos", "Ana", "Luis",
+    "Elena", "Diego", "Sofia", "Pedro", "Lucia"
+]
+apellidos_base = [
     "Garcia", "Martinez", "Lopez", "Hernandez", "Rodriguez",
     "Sanchez", "Ramirez", "Torres", "Flores", "Gomez"
 ]
@@ -155,19 +165,19 @@ for i in range(1, 61):
     especialidad = ESPECIALIDADES[(i - 1) % len(ESPECIALIDADES)]
     turno = TURNOS[(i - 1) % len(TURNOS)]
     nombre_idx = (i - 1) % len(nombres_base)
+    apellido_idx = (i - 1) % len(apellidos_base)
 
     # Inicialmente la mitad NO opera (rotación)
     puede_operar = i % 2 == 0
 
     medicos_db.append(Medico(
         id=i,
-        nombre=f"Dr. {nombres_base[nombre_idx]} {i}",
+        nombre=f"{nombres_base[nombre_idx]} {apellidos_base[apellido_idx]}",
         especialidad=especialidad,
         turno=turno,
         operaciones_hoy=0,
         max_operaciones=2,
         disponible=puede_operar,
-        equipo=[f"A{i}", f"E{i}", f"I{i}"],
         ultima_operacion=None,
         dias_sin_operar=0 if puede_operar else 1
     ))
@@ -187,6 +197,119 @@ for i in range(1, 31):
         turno=turno,
         disponible=True
     ))
+
+def normalizar_nombre_medico(nombre: str) -> str:
+    if not nombre:
+        return ""
+    cleaned = nombre.strip()
+    cleaned = re.sub(r"^(dr\.?|dra\.?|doctor|doctora)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned
+
+def _to_int(value: Optional[str], default: int = 0) -> int:
+    try:
+        return int(value) if value is not None else default
+    except ValueError:
+        return default
+
+def _to_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "t", "yes", "si"}
+
+def _medico_key(medico_id: int) -> str:
+    return f"{MEDICO_REDIS_PREFIX}{medico_id}"
+
+def medico_to_hash(medico: Medico) -> dict:
+    return {
+        "id": str(medico.id or ""),
+        "nombre": medico.nombre,
+        "especialidad": medico.especialidad,
+        "turno": medico.turno or "pendiente",
+        "operaciones_hoy": str(medico.operaciones_hoy),
+        "max_operaciones": str(medico.max_operaciones),
+        "disponible": "1" if medico.disponible else "0",
+        "ultima_operacion": medico.ultima_operacion or "",
+        "dias_sin_operar": str(medico.dias_sin_operar),
+    }
+
+def medico_from_hash(data: dict) -> Optional[Medico]:
+    if not data:
+        return None
+    return Medico(
+        id=_to_int(data.get("id"), 0),
+        nombre=normalizar_nombre_medico(data.get("nombre", "")),
+        especialidad=data.get("especialidad", "General"),
+        turno=data.get("turno") or "pendiente",
+        operaciones_hoy=_to_int(data.get("operaciones_hoy"), 0),
+        max_operaciones=_to_int(data.get("max_operaciones"), 2),
+        disponible=_to_bool(data.get("disponible"), False),
+        ultima_operacion=data.get("ultima_operacion") or None,
+        dias_sin_operar=_to_int(data.get("dias_sin_operar"), 0),
+    )
+
+async def sync_medicos_con_redis():
+    client = await get_client()
+    if not client:
+        return
+
+    ids = await client.smembers(MEDICO_IDS_KEY)
+    if ids:
+        medicos = []
+        for raw_id in sorted(ids, key=lambda value: int(value)):
+            data = await client.hgetall(_medico_key(int(raw_id)))
+            medico = medico_from_hash(data)
+            if medico:
+                medicos.append(medico)
+        if medicos:
+            medicos_db.clear()
+            medicos_db.extend(sorted(medicos, key=lambda m: m.id or 0))
+            max_id = max((m.id or 0) for m in medicos_db)
+            await client.set(MEDICO_SEQ_KEY, max_id)
+            await guardar_medicos_en_redis(medicos_db)
+        return
+
+    if medicos_db:
+        await guardar_medicos_en_redis(medicos_db)
+
+async def guardar_medicos_en_redis(medicos: List[Medico]):
+    client = await get_client()
+    if not client:
+        return
+
+    ids = []
+    for medico in medicos:
+        if medico.id is None:
+            continue
+        ids.append(str(medico.id))
+        await client.hset(_medico_key(medico.id), mapping=medico_to_hash(medico))
+    if ids:
+        await client.sadd(MEDICO_IDS_KEY, *ids)
+        await client.set(MEDICO_SEQ_KEY, max(int(item) for item in ids))
+
+async def guardar_medico_en_redis(medico: Medico):
+    client = await get_client()
+    if not client or medico.id is None:
+        return
+    await client.hset(_medico_key(medico.id), mapping=medico_to_hash(medico))
+    await client.sadd(MEDICO_IDS_KEY, str(medico.id))
+
+async def eliminar_medico_en_redis(medico_id: int):
+    client = await get_client()
+    if not client:
+        return
+    await client.delete(_medico_key(medico_id))
+    await client.srem(MEDICO_IDS_KEY, str(medico_id))
+
+async def siguiente_id_medico() -> int:
+    client = await get_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Database not connected")
+    current = await client.get(MEDICO_SEQ_KEY)
+    if current is None:
+        max_id = max((m.id or 0) for m in medicos_db) if medicos_db else 0
+        await client.set(MEDICO_SEQ_KEY, max_id)
+    return int(await client.incr(MEDICO_SEQ_KEY))
 
 def find_medico_by_id(medico_id: int) -> Optional[Medico]:
     for medico in medicos_db:
@@ -408,7 +531,17 @@ async def get_medicos(
     disponible: Optional[bool] = None
 ):
     """Obtiene medicos con filtros"""
-    resultado = medicos_db
+    resultado = []
+    for medico in medicos_db:
+        nombre = normalizar_nombre_medico(medico.nombre)
+        turno_actual = medico.turno if medico.turno in TURNOS else "pendiente"
+        if nombre != medico.nombre:
+            medico.nombre = nombre
+        if turno_actual != medico.turno:
+            medico.turno = turno_actual
+        resultado.append(medico)
+
+    resultado = sorted(resultado, key=lambda m: m.id or 0)
 
     if turno:
         resultado = [m for m in resultado if m.turno == turno]
@@ -948,34 +1081,44 @@ async def turnos():
 @app.post("/personal/medicos")
 async def crear_medico(medico: Medico):
     """Registrar un nuevo médico en la base de datos"""
-    pool = await get_pool()
-    if not pool:
-        raise HTTPException(status_code=500, detail="Database not connected")
-        
-    async with pool.acquire() as conn:
-        new_id = await conn.fetchval('''
-            INSERT INTO medicos (nombre, especialidad, turno)
-            VALUES ($1, $2, $3) RETURNING id
-        ''', medico.nombre, medico.especialidad, medico.turno)
-        
-    emit_log_bg("INFO", "PERSONAL", "CREATE", "MEDICO", f"ID_{new_id}_{medico.nombre.replace(' ', '_')}")
-    return {"success": True, "id": new_id, "message": "Médico registrado exitosamente"}
+    nombre = normalizar_nombre_medico(medico.nombre)
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Nombre del medico es requerido")
+
+    turno = "pendiente"
+    disponible = False
+    nuevo_id = await siguiente_id_medico()
+
+    nuevo = Medico(
+        id=nuevo_id,
+        nombre=nombre,
+        especialidad=medico.especialidad,
+        turno=turno,
+        operaciones_hoy=0,
+        max_operaciones=2,
+        disponible=disponible,
+        ultima_operacion=None,
+        dias_sin_operar=0
+    )
+
+    medicos_db.append(nuevo)
+    await guardar_medico_en_redis(nuevo)
+
+    emit_log_bg("INFO", "PERSONAL", "CREATE", "MEDICO", f"ID_{nuevo_id}_{nombre.replace(' ', '_')}")
+    return {"success": True, "id": nuevo_id, "message": "Medico registrado exitosamente"}
 
 @app.delete("/personal/medicos/{medico_id}")
 async def eliminar_medico(medico_id: int):
     """Eliminar un médico de la base de datos"""
-    pool = await get_pool()
-    if not pool:
-        raise HTTPException(status_code=500, detail="Database not connected")
-        
-    async with pool.acquire() as conn:
-        status = await conn.execute('DELETE FROM medicos WHERE id = $1', medico_id)
-        
-    if status == "DELETE 0":
-        raise HTTPException(status_code=404, detail="Médico no encontrado")
-        
+    medico = find_medico_by_id(medico_id)
+    if not medico:
+        raise HTTPException(status_code=404, detail="Medico no encontrado")
+
+    medicos_db.remove(medico)
+    await eliminar_medico_en_redis(medico_id)
+
     emit_log_bg("WARN", "PERSONAL", "DELETE", "MEDICO", f"ID_{medico_id}")
-    return {"success": True, "message": "Médico eliminado"}
+    return {"success": True, "message": "Medico eliminado"}
 
 if __name__ == "__main__":
     import uvicorn

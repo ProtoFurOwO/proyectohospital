@@ -1,0 +1,4 @@
+2026-04-29 00:36:04.698792: Inicia init_db
+2026-04-29 00:36:04.704108: [OK] Conexión establecida con MySQL
+2026-04-29 00:39:51.992136: Inicia init_db
+2026-04-29 00:39:51.996399: [OK] Conexión establecida con MySQL

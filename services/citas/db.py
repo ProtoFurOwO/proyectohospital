@@ -1,6 +1,7 @@
 import aiomysql
 import os
 import asyncio
+from datetime import datetime
 
 # Configuración preparada para AWS / Docker (usar variables de entorno)
 DB_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -12,8 +13,10 @@ DB_NAME = os.getenv("MYSQL_DB", "citas")
 pool = None
 
 async def init_db():
+    with open("citas_db_log.txt", "a") as f:
+        f.write(f"{datetime.now()}: Inicia init_db\n")
     global pool
-    for _ in range(10):
+    for i in range(10):
         try:
             pool = await aiomysql.create_pool(
                 host=DB_HOST,
@@ -24,13 +27,19 @@ async def init_db():
                 autocommit=True
             )
             print("[OK] Conexión establecida con MySQL")
+            with open("citas_db_log.txt", "a") as f:
+                f.write(f"{datetime.now()}: [OK] Conexión establecida con MySQL\n")
             break
         except Exception as e:
             print(f"Esperando a la base de datos MySQL... {e}")
+            with open("citas_db_log.txt", "a") as f:
+                f.write(f"{datetime.now()}: [RETRY {i}] Error: {e}\n")
             await asyncio.sleep(2)
             
     if not pool:
         print("[ERROR] No se pudo conectar a MySQL.")
+        with open("citas_db_log.txt", "a") as f:
+            f.write(f"{datetime.now()}: [ERROR] No se pudo conectar a MySQL final.\n")
 
 async def close_db():
     global pool

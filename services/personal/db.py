@@ -1,83 +1,50 @@
-import asyncpg
-import os
 import asyncio
+import os
+import redis.asyncio as redis
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://hospital:hospital123@127.0.0.1:5432/expedientes")
+REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "hospital123")
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_URL = os.getenv("REDIS_URL", "")
 
-pool = None
+_client = None
+
+
+def _build_redis_url() -> str:
+    if REDIS_URL:
+        return REDIS_URL
+
+    if REDIS_PASSWORD:
+        return f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+
+    return f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+
 
 async def init_db():
-    global pool
-    # Wait for DB to be ready
+    global _client
+    url = _build_redis_url()
+
     for _ in range(10):
         try:
-            pool = await asyncpg.create_pool(DB_URL)
+            _client = redis.from_url(url, decode_responses=True)
+            await _client.ping()
+            print("[OK] Conexion establecida con Redis (Personal)")
             break
-        except Exception as e:
-            print(f"Waiting for database... {e}")
+        except Exception as exc:
+            print(f"Esperando a Redis... {exc}")
             await asyncio.sleep(2)
-            
-    if not pool:
-        print("Could not connect to database")
-        return
 
-    async with pool.acquire() as conn:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS medicos (
-                id SERIAL PRIMARY KEY,
-                nombre VARCHAR(255) NOT NULL,
-                especialidad VARCHAR(100) NOT NULL,
-                turno VARCHAR(50) NOT NULL,
-                disponible BOOLEAN DEFAULT TRUE,
-                operaciones_hoy INTEGER DEFAULT 0,
-                max_operaciones INTEGER DEFAULT 2,
-                dias_sin_operar INTEGER DEFAULT 0,
-                ultima_operacion DATE
-            );
-            
-            CREATE TABLE IF NOT EXISTS personal_apoyo (
-                id SERIAL PRIMARY KEY,
-                nombre VARCHAR(255) NOT NULL,
-                rol VARCHAR(100) NOT NULL,
-                turno VARCHAR(50) NOT NULL,
-                disponible BOOLEAN DEFAULT TRUE
-            );
-            
-            CREATE TABLE IF NOT EXISTS solicitudes_turno (
-                id SERIAL PRIMARY KEY,
-                medico_solicitante_id INTEGER REFERENCES medicos(id),
-                medico_asignado_id INTEGER REFERENCES medicos(id),
-                turno_solicitado VARCHAR(50),
-                turno_final VARCHAR(50),
-                fecha_solicitada DATE,
-                fecha_asignada DATE,
-                bloque VARCHAR(50),
-                hora_inicio VARCHAR(10),
-                hora_fin VARCHAR(10),
-                estado VARCHAR(50),
-                motivo TEXT,
-                quirofano_id INTEGER,
-                origen VARCHAR(50)
-            );
-        ''')
-        
-        # Seed initial data if empty
-        val = await conn.fetchval('SELECT COUNT(*) FROM medicos')
-        if val == 0:
-            print("Seeding initial medicos data...")
-            # We will insert a few default doctors
-            await conn.execute('''
-                INSERT INTO medicos (nombre, especialidad, turno) VALUES
-                ('Dr. Juan Perez', 'Cirugia General', 'manana'),
-                ('Dra. Ana Gomez', 'Traumatologia', 'tarde'),
-                ('Dr. Carlos Ruiz', 'Cardiologia', 'manana'),
-                ('Dra. Maria Ortiz', 'Ginecologia', 'noche');
-            ''')
+    if not _client:
+        print("[ERROR] No se pudo conectar a Redis.")
+
 
 async def close_db():
-    global pool
-    if pool:
-        await pool.close()
+    global _client
+    if _client:
+        await _client.close()
+        _client = None
 
-async def get_pool():
-    return pool
+
+async def get_client():
+    return _client
