@@ -164,10 +164,14 @@ func handleGetQuirofano(w http.ResponseWriter, r *http.Request, id int) {
 }
 
 type IniciarRequest struct {
-	MedicoID     int    `json:"medico_id"`
-	MedicoNombre string `json:"medico_nombre"`
-	Especialidad string `json:"especialidad"`
-	EsUrgencia   bool   `json:"es_urgencia"`
+	MedicoID            int    `json:"medico_id"`
+	MedicoNombre        string `json:"medico_nombre"`
+	PacienteNombre      string `json:"paciente_nombre"`
+	ExpedienteID        int    `json:"expediente_id"`
+	AnestesiologoNombre string `json:"anestesiologo_nombre"`
+	TipoCirugia         string `json:"tipo_cirugia"`
+	Especialidad        string `json:"especialidad"`
+	EsUrgencia          bool   `json:"es_urgencia"`
 }
 
 func handleIniciarCirugia(w http.ResponseWriter, r *http.Request, id int) {
@@ -187,11 +191,13 @@ func handleIniciarCirugia(w http.ResponseWriter, r *http.Request, id int) {
 
 	var req IniciarRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Si no hay body, usar valores por defecto
-		req = IniciarRequest{
-			MedicoNombre: "Dr. García",
-			Especialidad: "General",
-		}
+		http.Error(w, "Body invalido para iniciar cirugia", http.StatusBadRequest)
+		return
+	}
+
+	if req.MedicoNombre == "" || req.PacienteNombre == "" || req.AnestesiologoNombre == "" || req.ExpedienteID == 0 {
+		http.Error(w, "Faltan datos de medico/paciente/anestesia para iniciar cirugia", http.StatusBadRequest)
+		return
 	}
 
 	now := time.Now()
@@ -200,6 +206,10 @@ func handleIniciarCirugia(w http.ResponseWriter, r *http.Request, id int) {
 	q.Estado = models.Ocupado
 	q.MedicoID = &req.MedicoID
 	q.MedicoNombre = req.MedicoNombre
+	q.PacienteNombre = req.PacienteNombre
+	q.ExpedienteID = &req.ExpedienteID
+	q.Anestesiologo = req.AnestesiologoNombre
+	q.TipoCirugia = req.TipoCirugia
 	q.Especialidad = req.Especialidad
 	q.InicioOperacion = &now
 	q.FinEstimado = &fin
@@ -236,6 +246,10 @@ func handleTerminarCirugia(w http.ResponseWriter, r *http.Request, id int) {
 	q.Estado = models.Limpieza
 	q.MedicoID = nil
 	q.MedicoNombre = ""
+	q.PacienteNombre = ""
+	q.ExpedienteID = nil
+	q.Anestesiologo = ""
+	q.TipoCirugia = ""
 	q.Especialidad = ""
 	q.InicioOperacion = &now
 	q.FinEstimado = &fin
@@ -317,6 +331,11 @@ func handleUrgencia(w http.ResponseWriter, r *http.Request, id int) {
 
 	targetQ.Estado = models.Ocupado
 	targetQ.MedicoNombre = "Equipo de Urgencias"
+	targetQ.PacienteNombre = "Paciente Urgente"
+	urgenciaID := 0
+	targetQ.ExpedienteID = &urgenciaID
+	targetQ.Anestesiologo = "Equipo de Urgencias"
+	targetQ.TipoCirugia = "Urgencia"
 	targetQ.Especialidad = "Urgencias"
 	targetQ.InicioOperacion = &now
 	targetQ.FinEstimado = &fin

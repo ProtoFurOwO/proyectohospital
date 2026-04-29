@@ -36,6 +36,7 @@ var modulosValidos = map[string]bool{
 	"EXPEDIENTES": true,
 	"QUIROFANOS":  true,
 	"PERSONAL":    true,
+	"SQL":         true,
 }
 
 var accionesValidas = map[string]bool{
@@ -43,6 +44,7 @@ var accionesValidas = map[string]bool{
 	"UPDATE": true,
 	"ASSIGN": true,
 	"DELETE": true,
+	"QUERY":  true,
 }
 
 var entidadesValidas = map[string]bool{
@@ -50,6 +52,11 @@ var entidadesValidas = map[string]bool{
 	"TURNO":      true,
 	"EXPEDIENTE": true,
 	"QUIROFANO":  true,
+	"MEDICO":     true,
+	"INSUMO":     true,
+	"CONSULTA":   true,
+	"SQL":        true,
+	"LOG":        true,
 }
 
 // LogLexer es el analizador léxico para cadenas de log.

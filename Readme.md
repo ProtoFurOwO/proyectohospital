@@ -83,6 +83,12 @@ Para facilitar el despliegue en desarrollo, utiliza el script automatizado:
 .\start.bat
 ```
 
+En Linux/Ubuntu:
+```bash
+chmod +x start.sh
+./start.sh
+```
+
 ### 4. Lanzar Frontend
 ```bash
 cd frontend
@@ -138,6 +144,11 @@ Se han implementado mejoras críticas para garantizar la estabilidad y funcional
 - **Manejo de Horarios:** Se implementó la recarga automática de disponibilidad de médicos al cambiar la fecha de cirugía en el formulario.
 - **Corrección de Estado:** Se resolvieron errores de "undefined ID" en el estado de React al sincronizar las respuestas del servidor con el Dashboard.
 
+### 5. Orquestacion de Cirugias (Auto + Manual)
+- **Auto-inicio:** Expedientes arranca cirugias automaticamente cuando el expediente esta listo (laboratorios completos) y la hora programada ya llego.
+- **Inicio manual Admin:** El Dashboard abre un modal por quirofano para seleccionar un expediente listo y forzar el inicio.
+- **Datos obligatorios:** Quirofanos requiere medico, paciente, anestesiologo, especialidad y expediente. Se eliminaron valores por defecto.
+
 ---
 
 ## 📡 Documentación y Pruebas
@@ -152,7 +163,14 @@ Cada microservicio expone su propia documentación interactiva mediante **Swagge
 ---
 
 ## ☁️ Notas de Despliegue (AWS/Ubuntu)
-El sistema está diseñado para ser desplegado en una instancia de **Ubuntu Server** mediante **Docker Compose**. Todas las URLs de conexión a bases de datos están parametrizadas mediante variables de entorno en los archivos `.env` y el `docker-compose.yml`.
+El sistema está diseñado para ser desplegado en una instancia de **Ubuntu Server**. Todas las URLs de conexión a bases de datos están parametrizadas mediante variables de entorno en los archivos `.env` y el `docker-compose.yml`.
+
+Pasos recomendados (resumen):
+- Instalar Docker, Docker Compose, Go, Python y Node.
+- Clonar el repositorio y ejecutar `docker-compose up -d`.
+- Crear el entorno Python y ejecutar `pip install -r requirements.txt`.
+- Ejecutar `python scripts/seed_5dbs.py`.
+- Levantar los servicios con `./start.sh` y el Frontend con `npm run dev`.
 
 ---
 *Proyecto desarrollado con fines académicos para la asignatura de Taller 4 y Compiladores.*

@@ -18,6 +18,10 @@ type Quirofano struct {
 	Estado          EstadoQuirofano `json:"estado"`
 	MedicoID        *int            `json:"medico_id,omitempty"`
 	MedicoNombre    string          `json:"medico_nombre,omitempty"`
+	PacienteNombre  string          `json:"paciente_nombre,omitempty"`
+	ExpedienteID    *int            `json:"expediente_id,omitempty"`
+	Anestesiologo   string          `json:"anestesiologo_nombre,omitempty"`
+	TipoCirugia     string          `json:"tipo_cirugia,omitempty"`
 	Especialidad    string          `json:"especialidad,omitempty"`
 	InicioOperacion *time.Time      `json:"inicio_operacion,omitempty"`
 	FinEstimado     *time.Time      `json:"fin_estimado,omitempty"`

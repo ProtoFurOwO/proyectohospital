@@ -3,9 +3,11 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 
 	"hospital-system/compiler"
 	"hospital-system/loganalyzer"
@@ -189,6 +191,13 @@ func (s *SQLService) handleSQLExecute(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "JSON invalido", http.StatusBadRequest)
 		return
+	}
+
+	query := strings.TrimSpace(req.Query)
+	if query != "" {
+		compact := strings.Join(strings.Fields(query), " ")
+		raw := fmt.Sprintf("[INFO] [SQL] QUERY CONSULTA %s", compact)
+		logStore.Process(raw)
 	}
 
 	result, tokens := s.executor.Execute(req.Query)

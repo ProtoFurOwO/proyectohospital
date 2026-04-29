@@ -147,17 +147,11 @@ def inferir_turno_por_hora(fecha_cita: datetime) -> str:
     return "noche"
 
 
-async def siguiente_paciente_id() -> int:
-    pool = await get_pool()
-    if not pool:
+def siguiente_paciente_id() -> int:
+    existentes = [cita.paciente_id for cita in citas_db]
+    if not existentes:
         return 1
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT MAX(id) FROM citas_legacy")
-            max_id = await cur.fetchone()
-            if max_id and max_id[0]:
-                return max_id[0] + 1
-            return 1
+    return max(existentes) + 1
 
 @app.get("/health")
 async def health():
@@ -330,7 +324,7 @@ async def programar_cita(cita: CitaCreate):
         paciente_id = paciente_id_expediente
     else:
         if paciente_id is None:
-            paciente_id = await siguiente_paciente_id()
+            paciente_id = siguiente_paciente_id()
             paciente_id_auto = True
             warning = (
                 f"Paciente creado automaticamente con ID {paciente_id}. "
@@ -388,29 +382,44 @@ async def programar_cita(cita: CitaCreate):
     }
 
 
-@app.post("/citas/{cita_id}/asignacion-quirurgica")
+@app.post("/citas/{cita_id}/asignacion-quirurgica", response_model=Cita)
 async def asignacion_quirurgica_cita(cita_id: int, asignacion: CitaAsignacionQuirurgica):
     """Actualiza la cita con la asignacion clinica final del paso de expedientes."""
-    pool = await get_pool()
-    if not pool:
-        raise HTTPException(status_code=500, detail="Database not connected")
-        
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            # En MySQL legacy, solo actualizamos lo que el esquema permite
-            # Por ahora, simulamos el éxito si la cita existe
-            await cur.execute("SELECT id FROM citas_legacy WHERE id=%s", (cita_id,))
-            if not await cur.fetchone():
-                raise HTTPException(status_code=404, detail="Cita no encontrada")
-                
-            # Ejemplo de actualización (ajustar según columnas reales de citas_legacy)
-            if asignacion.tipo_cirugia:
-                await cur.execute("UPDATE citas_legacy SET cirugia_programada=%s WHERE id=%s", (asignacion.tipo_cirugia, cita_id))
-            
-            await conn.commit()
+    for cita in citas_db:
+        if cita.id != cita_id:
+            continue
 
-    emit_log_bg("INFO", "CITAS", "UPDATE", "PACIENTE", f"asignacion_quirurgica_cita{cita_id}")
-    return {"success": True, "message": "Asignacion actualizada en MySQL"}
+        if asignacion.medico_id is not None:
+            cita.medico_id = asignacion.medico_id
+        if asignacion.medico_nombre is not None:
+            cita.medico_nombre = asignacion.medico_nombre.strip() or cita.medico_nombre or "Por asignar"
+        if asignacion.fecha_cita is not None:
+            cita.fecha_cita = asignacion.fecha_cita
+        if asignacion.quirofano_id is not None:
+            cita.quirofano_id = asignacion.quirofano_id
+        if asignacion.tipo_cirugia is not None:
+            cita.tipo_cirugia = asignacion.tipo_cirugia
+        if asignacion.division_quirurgica is not None:
+            cita.division_quirurgica = asignacion.division_quirurgica
+        if asignacion.complejidad_evento is not None:
+            cita.complejidad_evento = asignacion.complejidad_evento
+        if asignacion.urgencia_intervencion is not None:
+            cita.urgencia_intervencion = asignacion.urgencia_intervencion
+        if asignacion.responsable_anestesia is not None:
+            cita.responsable_anestesia = asignacion.responsable_anestesia
+
+        if asignacion.turno:
+            if asignacion.turno not in CATALOGOS_CITAS["turnos"]:
+                raise HTTPException(status_code=400, detail="turno invalido")
+            cita.turno = asignacion.turno
+        else:
+            cita.turno = inferir_turno_por_hora(cita.fecha_cita)
+
+        emit_log_bg("INFO", "CITAS", "UPDATE", "PACIENTE", f"asignacion_quirurgica_cita{cita_id}")
+
+        return cita
+
+    raise HTTPException(status_code=404, detail="Cita no encontrada")
 
 @app.post("/citas/{cita_id}/cancelar")
 async def cancelar_cita(cita_id: int):
@@ -448,26 +457,14 @@ async def reprogramar_cita(cita_id: int, nueva_fecha: datetime):
 
 @app.get("/citas/estadisticas/resumen")
 async def estadisticas():
-    """Resumen de citas desde MySQL"""
-    pool = await get_pool()
-    if not pool:
-        return {"total": 0, "programadas": 0}
-        
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT COUNT(*) FROM citas_legacy")
-            total = (await cur.fetchone())[0]
-            
-            await cur.execute("SELECT COUNT(*) FROM citas_legacy WHERE urgencia='Urgencia'")
-            urgencias = (await cur.fetchone())[0]
-            
+    """Resumen de citas"""
     return {
-        "total": total,
-        "programadas": total,
-        "completadas": 0,
-        "canceladas": 0,
-        "urgencias": urgencias,
-        "con_expediente": total,
+        "total": len(citas_db),
+        "programadas": len([c for c in citas_db if c.estado == "programada"]),
+        "completadas": len([c for c in citas_db if c.estado == "completada"]),
+        "canceladas": len([c for c in citas_db if c.estado == "cancelada"]),
+        "urgencias": len([c for c in citas_db if c.es_urgencia]),
+        "con_expediente": len([c for c in citas_db if c.numero_expediente_clinico]),
     }
 
 if __name__ == "__main__":

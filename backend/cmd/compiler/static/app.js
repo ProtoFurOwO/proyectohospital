@@ -275,7 +275,7 @@ function renderCentralLogs() {
   centralLogsBody.innerHTML = '';
   
   if (filtered.length === 0) {
-    centralLogsBody.innerHTML = '<tr><td colspan="5" class="empty-msg" style="text-align:center; padding: 2rem; color: var(--muted)">No hay logs que coincidan</td></tr>';
+    centralLogsBody.innerHTML = '<tr><td colspan="6" class="empty-msg" style="text-align:center; padding: 2rem; color: var(--muted)">No hay logs que coincidan</td></tr>';
     return;
   }
   
@@ -291,6 +291,9 @@ function renderCentralLogs() {
     
     const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '—';
     const statusHtml = `<span class="${isValid ? 'status-valid' : 'status-invalid'}">${isValid ? '✓ Válido' : '✗ Inválido'}</span>`;
+    const categoria = log.categoria || 'GENERICA';
+    const categoriaClass = categoria === 'PELIGRO' ? 'status-danger' : 'status-generic';
+    const categoriaHtml = `<span class="${categoriaClass}">${categoria}</span>`;
     
     tr.innerHTML = `
       <td style="color:var(--muted); font-size:0.7rem;">${log.id}</td>
@@ -298,6 +301,7 @@ function renderCentralLogs() {
       <td style="font-family: monospace;">${log.raw}</td>
       <td>${tokensHtml}</td>
       <td style="text-align: center;">${statusHtml}</td>
+      <td style="text-align: center;">${categoriaHtml}</td>
     `;
     centralLogsBody.appendChild(tr);
   });

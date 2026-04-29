@@ -43,17 +43,17 @@ func (p *LogParser) Parse() ParseResult {
 	}
 
 	// Regla 2: El segundo token debe ser <MODULO>
-	if err := p.expect(TokenModulo, "MODULO ([CITAS], [EXPEDIENTES], [QUIROFANOS] o [PERSONAL])"); err != nil {
+	if err := p.expect(TokenModulo, "MODULO ([CITAS], [EXPEDIENTES], [QUIROFANOS], [PERSONAL] o [SQL])"); err != nil {
 		return *err
 	}
 
 	// Regla 3: El tercer token debe ser <ACCION>
-	if err := p.expect(TokenAccion, "ACCION (CREATE, UPDATE, ASSIGN o DELETE)"); err != nil {
+	if err := p.expect(TokenAccion, "ACCION (CREATE, UPDATE, ASSIGN, DELETE o QUERY)"); err != nil {
 		return *err
 	}
 
 	// Regla 4: El cuarto token debe ser <ENTIDAD>
-	if err := p.expect(TokenEntidad, "ENTIDAD (PACIENTE, TURNO, EXPEDIENTE o QUIROFANO)"); err != nil {
+	if err := p.expect(TokenEntidad, "ENTIDAD (PACIENTE, TURNO, EXPEDIENTE, QUIROFANO, MEDICO, INSUMO, CONSULTA, SQL o LOG)"); err != nil {
 		return *err
 	}
 
