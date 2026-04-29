@@ -171,6 +171,7 @@ export default function ExpedientesAdmin() {
   const [estudiosForm, setEstudiosForm] = useState({})
   const [guardandoEstudioTipo, setGuardandoEstudioTipo] = useState('')
   const [resultadoEstudios, setResultadoEstudios] = useState(null)
+  const [editandoId, setEditandoId] = useState(null)
 
   const cargarDatos = async () => {
     const requests = await Promise.allSettled([
@@ -348,6 +349,10 @@ export default function ExpedientesAdmin() {
         }
       }
 
+      if (field === 'fecha_cirugia') {
+        cargarSlotsPorFecha(value)
+      }
+
       return next
     })
   }
@@ -467,8 +472,75 @@ export default function ExpedientesAdmin() {
     }
   }
 
+  const prepararEdicion = async (item) => {
+    setEditandoId(item.id)
+    setResultado(null)
+    
+    // Si tiene una fecha de cirugia, cargar slots para que los selects se llenen
+    if (item.fecha_cirugia) {
+      await cargarSlotsPorFecha(extractDate(item.fecha_cirugia))
+    }
+
+    setForm({
+      cita_id: item.cita_id || '',
+      paciente_id: item.paciente_id,
+      numero_expediente_clinico: item.numero_expediente_clinico,
+      nombre: item.nombre,
+      sexo: item.sexo || 'Femenino',
+      fecha_nacimiento: item.fecha_nacimiento || '',
+      edad_anos: item.edad_anos || '',
+      fecha_ingreso_hospital: item.fecha_ingreso_hospital || todayISO(),
+      fecha_solicitud_intervencion: item.fecha_solicitud_intervencion || todayISO(),
+      fecha_cirugia: item.fecha_cirugia || '',
+      procedencia: item.procedencia || 'Urgencias',
+      destino_paciente: item.destino_paciente || 'Hospitalizacion',
+      diagnostico_preoperatorio: item.diagnostico_preoperatorio || '',
+      diagnostico_postoperatorio: item.diagnostico_postoperatorio || '',
+      tipo_cirugia_complejidad: item.tipo_cirugia_complejidad || 'Menor',
+      tipo_cirugia_urgencia: item.tipo_cirugia_urgencia || 'Electiva',
+      division_quirurgica: item.division_quirurgica || '',
+      medico_id: '', // Se reseteara al cargar slots
+      anestesiologo_id: '',
+      turno_asignado: item.turno_asignado || '',
+      hora_inicio_cirugia: item.hora_inicio_cirugia || '',
+      hora_fin_cirugia: item.hora_fin_cirugia || '',
+      quirofano_id: item.quirofano_id || '',
+      observaciones: item.observaciones || '',
+      alergias_texto: (item.alergias || []).join(', ')
+    })
+
+    // Scroll al formulario
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cancelarEdicion = () => {
+    setEditandoId(null)
+    setForm(buildInitialForm(proximoNumeroExpediente))
+    setResultado(null)
+  }
+
+  const eliminarExpediente = async (id) => {
+    if (!window.confirm('¿Estas seguro de eliminar este expediente?')) return
+
+    try {
+      const response = await fetch(`${API_EXPEDIENTES}/expedientes/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        setResultado({ success: true, message: 'Expediente eliminado correctamente.' })
+        await cargarDatos()
+      } else {
+        const data = await response.json()
+        setResultado({ success: false, message: data.detail || 'Error al eliminar.' })
+      }
+    } catch (error) {
+      setResultado({ success: false, message: 'Error de conexion.' })
+    }
+  }
+
   const guardarExpediente = async () => {
-    if (!form.cita_id) {
+    if (!editandoId && !form.cita_id) {
       setResultado({
         success: false,
         message: 'Selecciona una cita programada para continuar con el flujo Cita -> Expediente.'
@@ -497,8 +569,11 @@ export default function ExpedientesAdmin() {
 
     try {
       const payload = buildPayload()
-      const response = await fetch(`${API_EXPEDIENTES}/expedientes`, {
-        method: 'POST',
+      const url = editandoId ? `${API_EXPEDIENTES}/expedientes/${editandoId}` : `${API_EXPEDIENTES}/expedientes`
+      const method = editandoId ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
@@ -513,16 +588,23 @@ export default function ExpedientesAdmin() {
 
       setResultado({
         success: true,
-        message: citaSincronizada
-          ? `Expediente ${data.numero_expediente_clinico} creado y cita sincronizada con turno/quirofano.`
-          : `Expediente ${data.numero_expediente_clinico} creado. No se pudo sincronizar la cita en este intento.`
+        message: editandoId 
+          ? `Expediente ${data.numero_expediente_clinico || payload.numero_expediente_clinico} actualizado correctamente.`
+          : (citaSincronizada
+              ? `Expediente ${data.numero_expediente_clinico} creado y cita sincronizada con turno/quirofano.`
+              : `Expediente ${data.numero_expediente_clinico} creado. No se pudo sincronizar la cita en este intento.`)
       })
 
-      setExpedienteEstudios(data)
-      setEstudiosForm(buildStudyForms(data))
-      setResultadoEstudios({ success: true, message: 'Panel listo para cargar estudios del nuevo expediente.' })
+      if (!editandoId) {
+        setExpedienteEstudios(data)
+        setEstudiosForm(buildStudyForms(data))
+        setResultadoEstudios({ success: true, message: 'Panel listo para cargar estudios del nuevo expediente.' })
+      }
 
       await cargarDatos()
+      if (editandoId) {
+        setEditandoId(null)
+      }
       setForm(buildInitialForm(buildNextExpedienteNumber([...expedientes, data])))
     } catch (error) {
       setResultado({ success: false, message: 'Error de conexion con servicio de expedientes.' })
@@ -725,7 +807,7 @@ export default function ExpedientesAdmin() {
 
       <div className="admin-layout-grid">
         <section className="admin-card">
-          <h3 className="admin-card-title">Nuevo expediente</h3>
+          <h3 className="admin-card-title">{editandoId ? `Editando Expediente ${form.numero_expediente_clinico}` : 'Nuevo expediente'}</h3>
 
           <div className="admin-form-grid">
             <div>
@@ -795,18 +877,24 @@ export default function ExpedientesAdmin() {
             </div>
 
             <div className="admin-grid-2">
-              <input
-                type="date"
-                value={form.fecha_ingreso_hospital}
-                onChange={(e) => onFieldChange('fecha_ingreso_hospital', e.target.value)}
-                className="sql-input admin-field"
-              />
-              <input
-                type="date"
-                value={form.fecha_cirugia}
-                onChange={(e) => onFieldChange('fecha_cirugia', e.target.value)}
-                className="sql-input admin-field"
-              />
+              <div className="admin-field-group">
+                <label className="admin-label">Fecha Ingreso Hospital</label>
+                <input
+                  type="date"
+                  value={form.fecha_ingreso_hospital}
+                  onChange={(e) => onFieldChange('fecha_ingreso_hospital', e.target.value)}
+                  className="sql-input admin-field"
+                />
+              </div>
+              <div className="admin-field-group">
+                <label className="admin-label">Fecha de Cirugia (Programada)</label>
+                <input
+                  type="date"
+                  value={form.fecha_cirugia}
+                  onChange={(e) => onFieldChange('fecha_cirugia', e.target.value)}
+                  className="sql-input admin-field"
+                />
+              </div>
             </div>
 
             <div className="admin-grid-2">
@@ -897,7 +985,7 @@ export default function ExpedientesAdmin() {
               </div>
             )}
 
-            <div className="admin-grid-2">
+            <div className="admin-grid-3">
               <div className="admin-field-group">
                 <label className="admin-label">Complejidad</label>
                 <select
@@ -925,6 +1013,24 @@ export default function ExpedientesAdmin() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="admin-field-group">
+                <label className="admin-label">Hora Inicio</label>
+                <input
+                  type="time"
+                  value={form.hora_inicio_cirugia}
+                  onChange={(e) => onFieldChange('hora_inicio_cirugia', e.target.value)}
+                  className="sql-input admin-field"
+                />
+              </div>
+              <div className="admin-field-group">
+                <label className="admin-label">Hora Fin</label>
+                <input
+                  type="time"
+                  value={form.hora_fin_cirugia}
+                  onChange={(e) => onFieldChange('hora_fin_cirugia', e.target.value)}
+                  className="sql-input admin-field"
+                />
               </div>
             </div>
 
@@ -966,9 +1072,24 @@ export default function ExpedientesAdmin() {
               className="sql-input admin-field admin-textarea"
             />
 
-            <button className="btn btn-success admin-main-button" onClick={guardarExpediente} disabled={guardando}>
-              {guardando ? 'Guardando...' : 'Crear expediente'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                className="btn btn-success admin-main-button"
+                style={{ flex: 1 }}
+                onClick={guardarExpediente}
+                disabled={guardando}
+              >
+                {guardando ? 'Guardando...' : (editandoId ? 'Actualizar expediente' : 'Crear expediente')}
+              </button>
+              {editandoId && (
+                <button
+                  className="btn btn-danger admin-main-button"
+                  onClick={cancelarEdicion}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
 
             {resultado && (
               <div className={`admin-result ${resultado.success ? 'success' : 'error'}`}>{resultado.message}</div>
@@ -1034,10 +1155,16 @@ export default function ExpedientesAdmin() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <button className="btn btn-warning" onClick={() => abrirPanelEstudios(item)}>
+                      <button className="btn btn-warning" onClick={() => abrirPanelEstudios(item)} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
                         Gestionar estudios
                       </button>
-                      <button className="btn btn-primary" onClick={() => validarExpediente(item.numero_expediente_clinico)}>
+                      <button className="btn btn-primary" onClick={() => prepararEdicion(item)} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                        Editar
+                      </button>
+                      <button className="btn btn-danger" onClick={() => eliminarExpediente(item.id)} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                        Eliminar
+                      </button>
+                      <button className="btn btn-primary" onClick={() => validarExpediente(item.numero_expediente_clinico)} style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
                         Validar preop
                       </button>
                       <button

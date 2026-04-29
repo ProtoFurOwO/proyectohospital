@@ -118,6 +118,28 @@ El motor SQL es una pieza de ingeniería que simula el comportamiento de un gest
 
 ---
 
+## 🛠️ Actualizaciones Recientes (Estabilización y CRUD)
+
+Se han implementado mejoras críticas para garantizar la estabilidad y funcionalidad completa del sistema en entornos de producción (AWS/Ubuntu):
+
+### 1. Estabilización de Persistencia SQL
+- **Citas (MySQL):** Se eliminó el almacenamiento volátil en RAM. Ahora todas las operaciones utilizan `aiomysql` para persistencia real, incluyendo logs de transacciones.
+- **Expedientes (PostgreSQL):** Migración total de listas en memoria a tablas relacionales persistentes. Se implementó un sistema de mapeo de datos para asegurar compatibilidad entre los nombres de columnas SQL (`num_expediente`) y las propiedades del Frontend (`numero_expediente_clinico`).
+
+### 2. Gestión de Expedientes (CRUD Completo)
+- **Edición y Eliminación:** La interfaz de **Expedientes Admin** ahora permite modificar y borrar registros existentes directamente en PostgreSQL mediante los métodos `PUT` y `DELETE`.
+- **Flujo de Trabajo Dinámico:** Se corrigió el error que obligaba a seleccionar una cita nueva al editar un expediente existente. Ahora el modo edición es independiente del flujo de creación.
+
+### 3. Sistema de Estudios Clínicos Persistente
+- **Tabla `estudios_clinicos`:** Se añadió una nueva tabla en PostgreSQL con relación `1:N` para almacenar Laboratorios, Cardiogramas e Imagenología de forma permanente.
+- **Validación en Tiempo Real:** El endpoint `/validar` ahora consulta la base de datos para verificar estudios reales, permitiendo que el estado de "Listo para Cirugía" (verde) persista tras refrescar la página.
+
+### 4. Mejoras en UX/UI
+- **Manejo de Horarios:** Se implementó la recarga automática de disponibilidad de médicos al cambiar la fecha de cirugía en el formulario.
+- **Corrección de Estado:** Se resolvieron errores de "undefined ID" en el estado de React al sincronizar las respuestas del servidor con el Dashboard.
+
+---
+
 ## 📡 Documentación y Pruebas
 
 Cada microservicio expone su propia documentación interactiva mediante **Swagger UI**:

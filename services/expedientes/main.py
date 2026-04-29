@@ -218,6 +218,41 @@ def preparar_estudios_requeridos(estudios: List[Estudio]) -> List[Estudio]:
     return estudios_finales
 
 
+def map_expediente(data: dict, estudios: List[dict] = None) -> dict:
+    """Adapta el esquema SQL al frontend React"""
+    estudios_list = []
+    if estudios:
+        for e in estudios:
+            estudios_list.append({
+                "id": e["id"],
+                "tipo": e["tipo"],
+                "resultado": e["resultado"] or "Pendiente",
+                "fecha": e["fecha"] or "N/A",
+                "valido": e["valido"],
+                "estado": e["estado"] or "pendiente",
+                "observaciones": e["observaciones"]
+            })
+
+    return {
+        "id": data["id"],
+        "paciente_id": data["id"],
+        "numero_expediente_clinico": data.get("num_expediente"),
+        "nombre": data.get("nombre_paciente"),
+        "sexo": data.get("sexo"),
+        "edad_anos": data.get("edad"),
+        "fecha_nacimiento": "N/A",
+        "diagnostico_preoperatorio": data.get("dx_preoperatorio"),
+        "diagnostico_postoperatorio": data.get("dx_postoperatorio"),
+        "turno_asignado": data.get("turno_asignado"),
+        "hora_inicio_cirugia": data.get("hora_inicio_cirugia"),
+        "hora_fin_cirugia": data.get("hora_fin_cirugia"),
+        "quirofano_id": data.get("quirofano_id"),
+        "tiene_preproceso": any(e["tipo"] == "laboratorio" and e["valido"] for e in estudios_list) if estudios_list else False,
+        "estudios": estudios_list,
+        "alergias": []
+    }
+
+
 # La base de datos en RAM fue eliminada en favor de PostgreSQL
 
 @app.get("/health")
@@ -242,26 +277,44 @@ async def get_expedientes():
         
     async with pool.acquire() as conn:
         records = await conn.fetch("SELECT * FROM historias_clinicas LIMIT 50")
-        
-    resultado = []
-    for record in records:
-        data = dict(record)
-        # Adaptar el esquema SQL al frontend React
-        resultado.append({
-            "id": data["id"],
-            "paciente_id": data["id"],
-            "numero_expediente_clinico": data["num_expediente"],
-            "nombre": data["nombre_paciente"],
-            "sexo": data["sexo"],
-            "edad_anos": data["edad"],
-            "fecha_nacimiento": "N/A",
-            "diagnostico_preoperatorio": data["dx_preoperatorio"],
-            "diagnostico_postoperatorio": data["dx_postoperatorio"],
-            "tiene_preproceso": True,
-            "estudios": [],
-            "alergias": []
-        })
+        resultado = []
+        for r in records:
+            data = dict(r)
+            estudios_records = await conn.fetch("SELECT * FROM estudios_clinicos WHERE expediente_id = $1", data["id"])
+            resultado.append(map_expediente(data, [dict(er) for er in estudios_records]))
+            
     return resultado
+
+@app.get("/expedientes/validar", response_model=ValidacionResponse)
+async def validar_expediente_estudios(numero_expediente: str):
+    """Valida si un expediente tiene los estudios requeridos en PostgreSQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        record = await conn.fetchrow("SELECT * FROM historias_clinicas WHERE num_expediente = $1", numero_expediente)
+        if not record:
+            raise HTTPException(status_code=404, detail="Expediente no encontrado")
+            
+        estudios = await conn.fetch("SELECT * FROM estudios_clinicos WHERE expediente_id = $1", record["id"])
+        
+    data = dict(record)
+    estudios_dict = {e["tipo"].lower(): e["valido"] for e in estudios}
+    
+    faltantes = [t for t in ESTUDIOS_REQUERIDOS if not estudios_dict.get(t.lower(), False)]
+    tiene_todo = len(faltantes) == 0
+    
+    return {
+        "paciente_id": data["id"],
+        "numero_expediente_clinico": data["num_expediente"],
+        "nombre": data["nombre_paciente"],
+        "tiene_preproceso": tiene_todo,
+        "puede_operar": tiene_todo,
+        "estudios_count": len(estudios),
+        "alergias": [],
+        "estudios_faltantes": faltantes
+    }
 
 
 @app.get("/expedientes/numero/{numero_expediente}")
@@ -275,22 +328,9 @@ async def get_expediente_por_numero(numero_expediente: str):
         record = await conn.fetchrow("SELECT * FROM historias_clinicas WHERE num_expediente = $1", numero_expediente)
         if not record:
             raise HTTPException(status_code=404, detail="Expediente no encontrado")
+        estudios = await conn.fetch("SELECT * FROM estudios_clinicos WHERE expediente_id = $1", record["id"])
             
-    data = dict(record)
-    return {
-        "id": data["id"],
-        "paciente_id": data["id"],
-        "numero_expediente_clinico": data["num_expediente"],
-        "nombre": data["nombre_paciente"],
-        "sexo": data["sexo"],
-        "edad_anos": data["edad"],
-        "fecha_nacimiento": "N/A",
-        "diagnostico_preoperatorio": data["dx_preoperatorio"],
-        "diagnostico_postoperatorio": data["dx_postoperatorio"],
-        "tiene_preproceso": True,
-        "estudios": [],
-        "alergias": []
-    }
+    return map_expediente(dict(record), [dict(e) for e in estudios])
 
 @app.delete("/expedientes/{expediente_id}")
 async def eliminar_expediente(expediente_id: int):
@@ -307,6 +347,26 @@ async def eliminar_expediente(expediente_id: int):
     emit_log_bg("WARN", "EXPEDIENTES", "DELETE", "EXPEDIENTE", f"id_{expediente_id}")
     return {"success": True, "message": "Expediente eliminado correctamente"}
 
+@app.post("/expedientes")
+async def crear_expediente(payload: ExpedienteCreate):
+    """Crea un nuevo expediente en PostgreSQL"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        record = await conn.fetchrow("""
+            INSERT INTO historias_clinicas (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio, turno_asignado, hora_inicio_cirugia, hora_fin_cirugia, quirofano_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING *
+        """, 
+        payload.numero_expediente_clinico, payload.nombre, payload.sexo, payload.edad_anos, 
+        payload.diagnostico_preoperatorio, payload.diagnostico_postoperatorio,
+        payload.turno_asignado, payload.hora_inicio_cirugia, payload.hora_fin_cirugia, payload.quirofano_id)
+        
+    emit_log_bg("INFO", "EXPEDIENTES", "CREATE", "EXPEDIENTE", f"{payload.nombre}")
+    return map_expediente(dict(record))
+
 @app.put("/expedientes/{expediente_id}")
 async def editar_expediente(expediente_id: int, payload: ExpedienteCreate):
     """Edita un expediente existente en PostgreSQL"""
@@ -317,11 +377,15 @@ async def editar_expediente(expediente_id: int, payload: ExpedienteCreate):
     async with pool.acquire() as conn:
         result = await conn.execute("""
             UPDATE historias_clinicas 
-            SET num_expediente=$1, nombre_paciente=$2, sexo=$3, edad=$4, dx_preoperatorio=$5, dx_postoperatorio=$6
-            WHERE id=$7
+            SET num_expediente=$1, nombre_paciente=$2, sexo=$3, edad=$4, 
+                dx_preoperatorio=$5, dx_postoperatorio=$6,
+                turno_asignado=$7, hora_inicio_cirugia=$8, hora_fin_cirugia=$9, quirofano_id=$10
+            WHERE id=$11
         """, 
         payload.numero_expediente_clinico, payload.nombre, payload.sexo, payload.edad_anos, 
-        payload.diagnostico_preoperatorio, payload.diagnostico_postoperatorio, expediente_id)
+        payload.diagnostico_preoperatorio, payload.diagnostico_postoperatorio,
+        payload.turno_asignado, payload.hora_inicio_cirugia, payload.hora_fin_cirugia, payload.quirofano_id,
+        expediente_id)
         
         if result == "UPDATE 0":
             raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -340,26 +404,35 @@ async def get_expediente(expediente_id: int):
         record = await conn.fetchrow("SELECT * FROM historias_clinicas WHERE id = $1", expediente_id)
         if not record:
             raise HTTPException(status_code=404, detail="Expediente no encontrado")
-            
-    data = dict(record)
-    return {
-        "id": data["id"],
-        "paciente_id": data["id"],
-        "numero_expediente_clinico": data["num_expediente"],
-        "nombre": data["nombre_paciente"],
-        "sexo": data["sexo"],
-        "edad_anos": data["edad"],
-        "diagnostico_preoperatorio": data["dx_preoperatorio"],
-        "diagnostico_postoperatorio": data["dx_postoperatorio"],
-        "tiene_preproceso": True,
-        "estudios": [],
-        "alergias": []
-    }
+        estudios = await conn.fetch("SELECT * FROM estudios_clinicos WHERE expediente_id = $1", record["id"])
+        
+    return map_expediente(dict(record), [dict(e) for e in estudios])
 
 @app.put("/expedientes/{expediente_id}/estudios/{tipo_estudio}")
 async def actualizar_estudio(expediente_id: int, tipo_estudio: str, payload: EstudioUpdate):
-    """Actualiza estudios en PostgreSQL (Simulado)"""
-    return {"success": True, "message": "Estudio actualizado en PostgreSQL"}
+    """Actualiza o crea un estudio en PostgreSQL y devuelve el expediente completo"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        # UPSERT estudio
+        await conn.execute("""
+            INSERT INTO estudios_clinicos (expediente_id, tipo, resultado, fecha, estado, valido, observaciones)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (expediente_id, tipo) 
+            DO UPDATE SET 
+                resultado = EXCLUDED.resultado,
+                fecha = EXCLUDED.fecha,
+                estado = EXCLUDED.estado,
+                valido = EXCLUDED.valido,
+                observaciones = EXCLUDED.observaciones
+        """, 
+        expediente_id, tipo_estudio.lower(), payload.resultado, payload.fecha, 
+        payload.estado, payload.valido, payload.observaciones)
+        
+    # Devolver el expediente actualizado
+    return await get_expediente(expediente_id)
 
 
 @app.post("/expedientes/{expediente_id}/enviar-cirugia")

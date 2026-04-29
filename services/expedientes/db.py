@@ -13,6 +13,22 @@ async def init_db():
         try:
             pool = await asyncpg.create_pool(DB_URL)
             print("[OK] Conexión establecida con PostgreSQL (Expedientes)")
+            
+            # Crear tablas necesarias
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS estudios_clinicos (
+                        id SERIAL PRIMARY KEY,
+                        expediente_id INTEGER NOT NULL,
+                        tipo VARCHAR(50) NOT NULL,
+                        resultado TEXT,
+                        fecha VARCHAR(20),
+                        estado VARCHAR(20),
+                        valido BOOLEAN DEFAULT FALSE,
+                        observaciones TEXT,
+                        UNIQUE(expediente_id, tipo)
+                    )
+                """)
             break
         except Exception as e:
             print(f"Esperando a la base de datos PostgreSQL... {e}")
