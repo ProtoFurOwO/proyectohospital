@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 const API_URL = 'http://localhost:8003'
 
-function QuirofanoCard({ quirofano, onUpdate }) {
+function QuirofanoCard({ quirofano, onUpdate, onManualStart }) {
   const [loading, setLoading] = useState(false)
 
   const getEstadoColor = (estado) => {
@@ -23,16 +23,13 @@ function QuirofanoCard({ quirofano, onUpdate }) {
     }
   }
 
-  const handleAction = async (action) => {
+  const handleAction = async (action, payload) => {
     setLoading(true)
     try {
       const response = await fetch(`${API_URL}/quirofanos/${quirofano.id}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          medico_nombre: 'Dr. Garcia',
-          especialidad: 'Cardiologia'
-        })
+        body: payload ? JSON.stringify(payload) : undefined
       })
 
       if (response.ok) {
@@ -132,10 +129,20 @@ function QuirofanoCard({ quirofano, onUpdate }) {
       <div style={infoStyle}>
         {quirofano.estado === 'ocupado' && (
           <>
+            <div style={labelStyle}>Paciente</div>
+            <div style={valueStyle}>{quirofano.paciente_nombre || 'Sin asignar'}</div>
             <div style={labelStyle}>Medico</div>
             <div style={valueStyle}>{quirofano.medico_nombre || 'Sin asignar'}</div>
+            <div style={labelStyle}>Anestesiologo</div>
+            <div style={valueStyle}>{quirofano.anestesiologo_nombre || '-'}</div>
             <div style={labelStyle}>Especialidad</div>
             <div style={valueStyle}>{quirofano.especialidad || '-'}</div>
+            {quirofano.tipo_cirugia && (
+              <>
+                <div style={labelStyle}>Cirugia</div>
+                <div style={valueStyle}>{quirofano.tipo_cirugia}</div>
+              </>
+            )}
             {quirofano.inicio_operacion && (
               <>
                 <div style={labelStyle}>Inicio</div>
@@ -163,7 +170,7 @@ function QuirofanoCard({ quirofano, onUpdate }) {
         {quirofano.estado === 'disponible' && (
           <button
             className="btn btn-success"
-            onClick={() => handleAction('iniciar')}
+            onClick={() => onManualStart?.(quirofano)}
             disabled={loading}
           >
             {loading ? 'Iniciando...' : 'Iniciar Cirugia'}

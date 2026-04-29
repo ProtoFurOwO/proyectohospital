@@ -25,6 +25,9 @@ function LogConsole({ logs }) {
           <span className="log-time">{formatTime(log.timestamp)}</span>
           <span className={`log-level ${log.level}`}>[{log.level}]</span>
           <span className="log-message">{log.message}</span>
+          {log.query && (
+            <span className="log-query">{log.query}</span>
+          )}
         </div>
       ))}
     </div>
