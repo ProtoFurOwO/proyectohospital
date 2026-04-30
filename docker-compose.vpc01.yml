@@ -1,5 +1,4 @@
-version: '3.8'
-
+version: '2.4'
 networks:
   backend_net:
     driver: bridge
@@ -18,7 +17,8 @@ services:
       MYSQL_PASSWORD: hospital123
     volumes:
       - mysql_citas_data:/var/lib/mysql
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --innodb-buffer-pool-size=64M
+    mem_limit: 256m
     networks:
       - backend_net
 
@@ -31,6 +31,8 @@ services:
       POSTGRES_DB: expedientes
     volumes:
       - postgres_expedientes_data:/var/lib/postgresql/data
+    command: postgres -c shared_buffers=64MB -c work_mem=16MB
+    mem_limit: 256m
     networks:
       - backend_net
 
@@ -44,6 +46,8 @@ services:
       MARIADB_PASSWORD: hospital123
     volumes:
       - mariadb_quirofanos_data:/var/lib/mysql
+    command: --innodb-buffer-pool-size=64M
+    mem_limit: 200m
     networks:
       - backend_net
 
@@ -56,15 +60,18 @@ services:
       MONGO_INITDB_DATABASE: insumos
     volumes:
       - mongo_insumos_data:/data/db
+    command: --wiredTigerCacheSizeGB 0.25
+    mem_limit: 300m
     networks:
       - backend_net
 
   db-personal:
-    image: redis:7
+    image: redis:7-alpine
     container_name: hospital-redis-personal
-    command: redis-server --requirepass hospital123
+    command: redis-server --requirepass hospital123 --maxmemory 100mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_personal_data:/data
+    mem_limit: 128m
     networks:
       - backend_net
 
@@ -85,6 +92,7 @@ services:
       - EXPEDIENTES_SERVICE_URL=http://api-expedientes:8002
     depends_on:
       - db-citas
+    mem_limit: 150m
     networks:
       - backend_net
 
@@ -103,6 +111,7 @@ services:
       - QUIROFANOS_SERVICE_URL=http://api-quirofanos:8000
     depends_on:
       - db-expedientes
+    mem_limit: 150m
     networks:
       - backend_net
 
@@ -116,6 +125,7 @@ services:
       - MONGO_HOST=db-insumos
     depends_on:
       - db-insumos
+    mem_limit: 150m
     networks:
       - backend_net
 
@@ -129,6 +139,7 @@ services:
       - REDIS_HOST=db-personal
     depends_on:
       - db-personal
+    mem_limit: 150m
     networks:
       - backend_net
 
@@ -146,6 +157,7 @@ services:
       - DB_HOST=db-quirofanos
     depends_on:
       - db-quirofanos
+    mem_limit: 64m
     networks:
       - backend_net
 
@@ -156,6 +168,7 @@ services:
       args:
         - SERVICE_NAME=compiler
     container_name: api-compiladores
+    mem_limit: 64m
     networks:
       - backend_net
 
@@ -176,6 +189,7 @@ services:
       - api-personal
       - api-quirofanos
       - api-compiladores
+    mem_limit: 64m
     networks:
       - backend_net
 
