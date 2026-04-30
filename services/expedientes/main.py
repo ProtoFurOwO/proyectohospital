@@ -403,6 +403,7 @@ expedientes_db: List[Expediente] = [
 ]
 
 @app.get("/health")
+@app.get("/expedientes/health")
 async def health():
     return {"status": "ok", "service": "expedientes", "db": "postgresql", "port": 8002}
 
@@ -729,7 +730,6 @@ async def estadisticas():
         "con_alergias": len([e for e in expedientes_db if len(e.alergias) > 0]),
         "con_numero_expediente": len([e for e in expedientes_db if e.numero_expediente_clinico]),
     }
-
 
 @app.get("/expedientes/{expediente_id}", response_model=Expediente)
 async def get_expediente_legacy(expediente_id: int):

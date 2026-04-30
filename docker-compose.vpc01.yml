@@ -18,6 +18,7 @@ services:
       MYSQL_PASSWORD: hospital123
     volumes:
       - mysql_citas_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
     networks:
       - backend_net
 
@@ -78,6 +79,9 @@ services:
     command: ["python", "-m", "uvicorn", "services.citas.main:app", "--host", "0.0.0.0", "--port", "8001"]
     environment:
       - MYSQL_HOST=db-citas
+      - MYSQL_DB=citas
+      - MYSQL_USER=hospital
+      - MYSQL_PASSWORD=hospital123
       - EXPEDIENTES_SERVICE_URL=http://api-expedientes:8002
     depends_on:
       - db-citas
@@ -92,6 +96,9 @@ services:
     command: ["python", "-m", "uvicorn", "services.expedientes.main:app", "--host", "0.0.0.0", "--port", "8002"]
     environment:
       - POSTGRES_HOST=db-expedientes
+      - POSTGRES_DB=expedientes
+      - POSTGRES_USER=hospital
+      - POSTGRES_PASSWORD=hospital123
       - CITAS_SERVICE_URL=http://api-citas:8001
       - QUIROFANOS_SERVICE_URL=http://api-quirofanos:8000
     depends_on:
