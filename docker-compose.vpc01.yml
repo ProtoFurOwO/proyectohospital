@@ -1,0 +1,180 @@
+version: '3.8'
+
+networks:
+  backend_net:
+    driver: bridge
+
+services:
+  # ==========================================
+  # BASES DE DATOS
+  # ==========================================
+  db-citas:
+    image: mysql:8
+    container_name: hospital-mysql-citas
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: citas
+      MYSQL_USER: hospital
+      MYSQL_PASSWORD: hospital123
+    volumes:
+      - mysql_citas_data:/var/lib/mysql
+    networks:
+      - backend_net
+
+  db-expedientes:
+    image: postgres:15
+    container_name: hospital-postgres-expedientes
+    environment:
+      POSTGRES_USER: hospital
+      POSTGRES_PASSWORD: hospital123
+      POSTGRES_DB: expedientes
+    volumes:
+      - postgres_expedientes_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
+
+  db-quirofanos:
+    image: mariadb:10
+    container_name: hospital-mariadb-quirofanos
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: quirofanos
+      MARIADB_USER: hospital
+      MARIADB_PASSWORD: hospital123
+    volumes:
+      - mariadb_quirofanos_data:/var/lib/mysql
+    networks:
+      - backend_net
+
+  db-insumos:
+    image: mongo:6
+    container_name: hospital-mongo-insumos
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: hospital
+      MONGO_INITDB_ROOT_PASSWORD: hospital123
+      MONGO_INITDB_DATABASE: insumos
+    volumes:
+      - mongo_insumos_data:/data/db
+    networks:
+      - backend_net
+
+  db-personal:
+    image: redis:7
+    container_name: hospital-redis-personal
+    command: redis-server --requirepass hospital123
+    volumes:
+      - redis_personal_data:/data
+    networks:
+      - backend_net
+
+  # ==========================================
+  # MICROSERVICIOS PYTHON
+  # ==========================================
+  api-citas:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: api-citas
+    command: ["python", "-m", "uvicorn", "services.citas.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      - MYSQL_HOST=db-citas
+      - EXPEDIENTES_SERVICE_URL=http://api-expedientes:8002
+    depends_on:
+      - db-citas
+    networks:
+      - backend_net
+
+  api-expedientes:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: api-expedientes
+    command: ["python", "-m", "uvicorn", "services.expedientes.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      - POSTGRES_HOST=db-expedientes
+      - CITAS_SERVICE_URL=http://api-citas:8001
+      - QUIROFANOS_SERVICE_URL=http://api-quirofanos:8000
+    depends_on:
+      - db-expedientes
+    networks:
+      - backend_net
+
+  api-insumos:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: api-insumos
+    command: ["python", "-m", "uvicorn", "services.insumos.main:app", "--host", "0.0.0.0", "--port", "8004"]
+    environment:
+      - MONGO_HOST=db-insumos
+    depends_on:
+      - db-insumos
+    networks:
+      - backend_net
+
+  api-personal:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: api-personal
+    command: ["python", "-m", "uvicorn", "services.personal.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      - REDIS_HOST=db-personal
+    depends_on:
+      - db-personal
+    networks:
+      - backend_net
+
+  # ==========================================
+  # MICROSERVICIOS GO
+  # ==========================================
+  api-quirofanos:
+    build:
+      context: .
+      dockerfile: Dockerfile.go
+      args:
+        - SERVICE_NAME=quirofanos
+    container_name: api-quirofanos
+    environment:
+      - DB_HOST=db-quirofanos
+    depends_on:
+      - db-quirofanos
+    networks:
+      - backend_net
+
+  api-compiladores:
+    build:
+      context: .
+      dockerfile: Dockerfile.go
+      args:
+        - SERVICE_NAME=compiler
+    container_name: api-compiladores
+    networks:
+      - backend_net
+
+  # ==========================================
+  # NGINX REVERSE PROXY
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-citas
+      - api-expedientes
+      - api-insumos
+      - api-personal
+      - api-quirofanos
+      - api-compiladores
+    networks:
+      - backend_net
+
+volumes:
+  mysql_citas_data:
+  postgres_expedientes_data:
+  mariadb_quirofanos_data:
+  mongo_insumos_data:
+  redis_personal_data:

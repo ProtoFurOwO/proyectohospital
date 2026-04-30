@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { API_PERSONAL } from '../config'
 
+const API_PERSONAL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
 
 function Horarios() {
   const [slots, setSlots] = useState([])

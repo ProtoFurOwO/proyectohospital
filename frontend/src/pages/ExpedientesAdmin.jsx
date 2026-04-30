@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_EXPEDIENTES, API_CITAS, API_PERSONAL } from '../config'
 
+const API_EXPEDIENTES = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8002'
+const API_CITAS = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8001'
+const API_PERSONAL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
 
 const ESTUDIOS_REQUERIDOS = ['laboratorio', 'cardiograma', 'imagen']
 const ESTADOS_ESTUDIO_FALLBACK = ['pendiente', 'solicitado', 'realizado', 'validado', 'rechazado']

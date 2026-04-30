@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_CITAS, API_EXPEDIENTES } from '../config'
 
+const API_CITAS = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8001'
+const API_EXPEDIENTES = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8002'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 

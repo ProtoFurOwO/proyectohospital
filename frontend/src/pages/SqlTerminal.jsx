@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { API_COMPILER } from '../config'
 import TokenTable from '../components/TokenTable'
 import LogConsole from '../components/LogConsole'
 
+const API_URL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8006'
 
 function SqlTerminal() {
   const [query, setQuery] = useState('CREATE DATABASE hospital;')
@@ -20,7 +20,7 @@ function SqlTerminal() {
       }
 
       try {
-        const response = await fetch(`${API_COMPILER}/sql/tokenize`, {
+        const response = await fetch(`${API_URL}/sql/tokenize`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query })
@@ -46,7 +46,7 @@ function SqlTerminal() {
 
   const fetchLogs = async () => {
     try {
-      const response = await fetch(`${API_COMPILER}/sql/logs`)
+      const response = await fetch(`${API_URL}/sql/logs`)
       if (response.ok) {
         const data = await response.json()
         setLogs(data || [])
@@ -63,7 +63,7 @@ function SqlTerminal() {
     setResult(null)
 
     try {
-      const response = await fetch(`${API_COMPILER}/sql/execute`, {
+      const response = await fetch(`${API_URL}/sql/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query })

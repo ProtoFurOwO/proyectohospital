@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { API_PERSONAL } from '../config'
 
 const ESPECIALIDADES = [
   "Cirugia General", "Traumatologia", "Cardiologia",
@@ -17,7 +16,8 @@ export default function AdminMedicos() {
 
   const fetchMedicos = async () => {
     try {
-      const res = await fetch(`${API_PERSONAL}/personal/medicos`)
+      const baseUrl = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
+      const res = await fetch(`${baseUrl}/personal/medicos`)
       if (res.ok) {
         const data = await res.json()
         setMedicos(Array.isArray(data) ? data : [])
@@ -50,7 +50,8 @@ export default function AdminMedicos() {
         nombre: formData.nombre,
         especialidad: formData.especialidad
       }
-      const res = await fetch(`${API_PERSONAL}/personal/medicos`, {
+      const baseUrl = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
+      const res = await fetch(`${baseUrl}/personal/medicos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -76,7 +77,8 @@ export default function AdminMedicos() {
   const handleDelete = async (id) => {
     if (!window.confirm("¿Seguro que deseas eliminar este médico?")) return
     try {
-      const res = await fetch(`${API_PERSONAL}/personal/medicos/${id}`, { method: 'DELETE' })
+      const baseUrl = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
+      const res = await fetch(`${baseUrl}/personal/medicos/${id}`, { method: 'DELETE' })
       if (res.ok) {
         fetchMedicos()
       }

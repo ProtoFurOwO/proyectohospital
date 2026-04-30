@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { API_QUIROFANOS, API_EXPEDIENTES } from '../config'
 import QuirofanoCard from '../components/QuirofanoCard'
 
+const API_URL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8003'
+const API_EXPEDIENTES = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8002'
 
 function Dashboard() {
   const [quirofanos, setQuirofanos] = useState([])
@@ -18,7 +19,7 @@ function Dashboard() {
 
   const fetchQuirofanos = async () => {
     try {
-      const response = await fetch(`${API_QUIROFANOS}/quirofanos`)
+      const response = await fetch(`${API_URL}/quirofanos`)
       if (!response.ok) throw new Error('Error al cargar quirofanos')
       const data = await response.json()
       // Ordenar por número
