@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { API_CITAS, API_EXPEDIENTES } from '../config'
 
-const API_CITAS = 'http://localhost:8001'
-const API_EXPEDIENTES = 'http://localhost:8002'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 

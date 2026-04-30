@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
-  # MySQL - Servicio de Citas (Puerto 8001)
+  # ==========================================
+  # DATABASES (VPC01 - Backend)
+  # ==========================================
   db-citas:
     image: mysql:8
     container_name: hospital-mysql-citas
-    ports:
-      - "3306:3306"
+    restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: citas
@@ -19,13 +20,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["db", "backend", "full"]
 
-  # PostgreSQL - Servicio de Expedientes (Puerto 8002)
   db-expedientes:
     image: postgres:15
     container_name: hospital-postgres-expedientes
-    ports:
-      - "5432:5432"
+    restart: always
     environment:
       POSTGRES_USER: hospital
       POSTGRES_PASSWORD: hospital123
@@ -37,13 +37,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["db", "backend", "full"]
 
-  # MariaDB - Servicio de Quirofanos (Puerto 8003)
   db-quirofanos:
     image: mariadb:10
     container_name: hospital-mariadb-quirofanos
-    ports:
-      - "3307:3306"
+    restart: always
     environment:
       MARIADB_ROOT_PASSWORD: root
       MARIADB_DATABASE: quirofanos
@@ -56,13 +55,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["db", "backend", "full"]
 
-  # MongoDB - Servicio de Insumos (Puerto 8004)
   db-insumos:
     image: mongo:6
     container_name: hospital-mongo-insumos
-    ports:
-      - "27017:27017"
+    restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: hospital
       MONGO_INITDB_ROOT_PASSWORD: hospital123
@@ -74,13 +72,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["db", "backend", "full"]
 
-  # Redis - Servicio de Personal (Puerto 8005)
   db-personal:
     image: redis:7
     container_name: hospital-redis-personal
-    ports:
-      - "6379:6379"
+    restart: always
     command: redis-server --requirepass hospital123
     volumes:
       - redis_personal_data:/data
@@ -89,6 +86,122 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["db", "backend", "full"]
+
+  # ==========================================
+  # BACKEND SERVICES (VPC01 - Backend)
+  # ==========================================
+  citas-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: hospital-citas
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - MYSQL_HOST=db-citas
+      - MYSQL_PORT=3306
+      - MYSQL_USER=hospital
+      - MYSQL_PASSWORD=hospital123
+      - MYSQL_DB=citas
+      - EXPEDIENTES_SERVICE_URL=http://expedientes-service:8002
+    depends_on:
+      db-citas:
+        condition: service_healthy
+    command: uvicorn services.citas.main:app --host 0.0.0.0 --port 8001
+    profiles: ["backend", "full"]
+
+  expedientes-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: hospital-expedientes
+    restart: always
+    ports:
+      - "8002:8002"
+    environment:
+      - POSTGRES_EXPEDIENTES_URL=postgresql://hospital:hospital123@db-expedientes:5432/expedientes
+      - CITAS_SERVICE_URL=http://citas-service:8001
+      - QUIROFANOS_SERVICE_URL=http://quirofanos-service:8003
+    depends_on:
+      db-expedientes:
+        condition: service_healthy
+    command: uvicorn services.expedientes.main:app --host 0.0.0.0 --port 8002
+    profiles: ["backend", "full"]
+
+  insumos-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: hospital-insumos
+    restart: always
+    ports:
+      - "8004:8004"
+    depends_on:
+      db-insumos:
+        condition: service_healthy
+    command: uvicorn services.insumos.main:app --host 0.0.0.0 --port 8004
+    profiles: ["backend", "full"]
+
+  personal-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: hospital-personal
+    restart: always
+    ports:
+      - "8005:8005"
+    environment:
+      - REDIS_HOST=db-personal
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=hospital123
+    depends_on:
+      db-personal:
+        condition: service_healthy
+    command: uvicorn services.personal.main:app --host 0.0.0.0 --port 8005
+    profiles: ["backend", "full"]
+
+  quirofanos-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.go
+      args:
+        SERVICE_PATH: cmd/quirofanos
+    container_name: hospital-quirofanos
+    restart: always
+    ports:
+      - "8003:8003"
+    # El servicio de quirofanos demo no usa DB directamente pero podria
+    profiles: ["backend", "full"]
+
+  compiler-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.go
+      args:
+        SERVICE_PATH: cmd/compiler
+    container_name: hospital-compiler
+    restart: always
+    ports:
+      - "8006:8006"
+    profiles: ["backend", "full"]
+
+  # ==========================================
+  # FRONTEND (VPC02 - Frontend)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # IP Privada de la instancia Backend en VPC01 (cambiar segun AWS)
+        VITE_API_BASE_URL: ${BACKEND_IP:-http://localhost}
+    container_name: hospital-frontend
+    restart: always
+    ports:
+      - "80:80"
+    profiles: ["frontend", "full"]
 
 volumes:
   mysql_citas_data:

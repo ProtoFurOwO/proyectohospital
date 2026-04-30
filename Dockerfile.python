@@ -1,0 +1,19 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    default-libmysqlclient-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiamos todo el repo para tener acceso a log_emitter y demas modulos compartidos
+COPY . .
+
+# El entrypoint se definira en el docker-compose usando el flag --port
+# CMD ["uvicorn", "services.citas.main:app", "--host", "0.0.0.0", "--port", "8001"]

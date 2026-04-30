@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { API_PERSONAL } from '../config'
 
-const API_PERSONAL = 'http://localhost:8005'
 
 const TURNOS = [
   { key: 'manana', nombre: 'Manana' },
