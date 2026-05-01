@@ -43,12 +43,6 @@ PIDS+=("$!")
 
 sleep 1
 
-echo "[8004] Iniciando Insumos..."
-"$PYTHON_BIN" -m uvicorn services.insumos.main:app --port 8004 >"$LOG_DIR/insumos.log" 2>&1 &
-PIDS+=("$!")
-
-sleep 1
-
 echo "[8005] Iniciando Personal..."
 "$PYTHON_BIN" -m uvicorn services.personal.main:app --port 8005 >"$LOG_DIR/personal.log" 2>&1 &
 PIDS+=("$!")
@@ -79,7 +73,7 @@ echo ""
 echo "API Docs (Swagger):"
 echo "  http://localhost:8001/docs"
 echo "  http://localhost:8002/docs"
-echo "  http://localhost:8004/docs"
+
 echo "  http://localhost:8005/docs"
 echo ""
 echo "Quirofanos:"

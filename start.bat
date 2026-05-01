@@ -17,9 +17,6 @@ timeout /t 2 /nobreak >nul
 echo [8002] Iniciando Expedientes...
 start /B python -m uvicorn services.expedientes.main:app --port 8002 >nul 2>&1
 
-timeout /t 2 /nobreak >nul
-echo [8004] Iniciando Insumos...
-start /B python -m uvicorn services.insumos.main:app --port 8004 >nul 2>&1
 
 timeout /t 2 /nobreak >nul
 echo [8005] Iniciando Personal...
@@ -45,7 +42,7 @@ echo.
 echo API Docs (Swagger):
 echo   http://localhost:8001/docs
 echo   http://localhost:8002/docs
-echo   http://localhost:8004/docs
+
 echo   http://localhost:8005/docs
 echo.
 echo Quirofanos:

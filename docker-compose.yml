@@ -57,23 +57,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # MongoDB - Servicio de Insumos (Puerto 8004)
-  db-insumos:
-    image: mongo:6
-    container_name: hospital-mongo-insumos
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: hospital
-      MONGO_INITDB_ROOT_PASSWORD: hospital123
-      MONGO_INITDB_DATABASE: insumos
-    volumes:
-      - mongo_insumos_data:/data/db
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # Redis - Servicio de Personal (Puerto 8005)
   db-personal:
@@ -94,5 +77,5 @@ volumes:
   mysql_citas_data:
   postgres_expedientes_data:
   mariadb_quirofanos_data:
-  mongo_insumos_data:
+
   redis_personal_data:

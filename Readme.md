@@ -10,8 +10,8 @@
 Este proyecto representa una infraestructura de salud moderna y escalable, construida bajo una **Arquitectura de Microservicios Distribuidos**. El sistema gestiona desde citas médicas y expedientes clínicos hasta la orquestación en tiempo real de 30 quirófanos y el control de inventarios.
 
 ### Componentes Clave:
-- **6 Microservicios Autónomos:** Desarrollados en **Python (FastAPI)** y **Go**, garantizando alto rendimiento y concurrencia.
-- **Persistencia Multi-Base de Datos:** Implementación de **MySQL, PostgreSQL, MariaDB, MongoDB y Redis**, cada uno optimizado para su caso de uso específico.
+- **5 Microservicios Autónomos:** Desarrollados en **Python (FastAPI)** y **Go**, garantizando alto rendimiento y concurrencia.
+- **Persistencia Multi-Base de Datos:** Implementación de **MySQL, PostgreSQL, MariaDB y Redis**, cada uno optimizado para su caso de uso específico.
 - **Motor SQL Nativo:** Un compilador completo (Léxico, Sintáctico y Semántico) desarrollado en Go para gestionar la lógica de datos de forma independiente.
 - **Dashboard de Control:** Interfaz administrativa moderna en **React 18** con actualizaciones en tiempo real.
 
@@ -31,7 +31,6 @@ graph TD
         S1[Citas :8001]
         S2[Expedientes :8002]
         S3[Quirofanos :8003]
-        S4[Insumos :8004]
         S5[Personal :8005]
         S6[Motor SQL :8006]
     end
@@ -40,15 +39,14 @@ graph TD
         D1[(MySQL)]
         D2[(PostgreSQL)]
         D3[(MariaDB)]
-        D4[(MongoDB)]
         D5[(Redis)]
     end
 
-    A --> S1 & S2 & S3 & S4 & S5 & S6
+    A --> S1 & S2 & S3 & S5 & S6
     S1 --> D1
     S2 --> D2
     S3 --> D3
-    S4 --> D4
+
     S5 --> D5
 ```
 
@@ -105,7 +103,7 @@ npm run dev
 | **Citas** | FastAPI | MySQL 8.0 | 8001 |
 | **Expedientes** | FastAPI | PostgreSQL 15 | 8002 |
 | **Quirofanos** | Go (Gin) | MariaDB 10.11 | 8003 |
-| **Insumos** | FastAPI | MongoDB 6.0 | 8004 |
+
 | **Personal** | FastAPI | Redis 7.0 | 8005 |
 | **Motor SQL** | Go | Memoria/FS | 8006 |
 
@@ -127,6 +125,9 @@ El motor SQL es una pieza de ingeniería que simula el comportamiento de un gest
 ## 🛠️ Actualizaciones Recientes (Estabilización y CRUD)
 
 Se han implementado mejoras críticas para garantizar la estabilidad y funcionalidad completa del sistema en entornos de producción (AWS/Ubuntu):
+
+### 0. Eliminación del Servicio de Insumos (Optimización)
+- **Ahorro de Recursos:** Se eliminó por completo el microservicio de **Insumos** y su base de datos **MongoDB**. Esto se realizó para optimizar el consumo de RAM y CPU, dado que MongoDB requiere demasiados recursos, mejorando el rendimiento general del entorno de contenedores y del sistema hospitalario.
 
 ### 1. Estabilización de Persistencia SQL
 - **Citas (MySQL):** Integración total con la tabla `citas_legacy`. Se eliminó el uso de variables en memoria que causaban crasheos. Ahora, la creación de citas persiste el nombre del paciente, IDs autoincrementales y metadatos quirúrgicos directamente en el motor relacional.
@@ -157,7 +158,6 @@ Cada microservicio expone su propia documentación interactiva mediante **Swagge
 
 - 📝 **Citas API:** [http://localhost:8001/docs](http://localhost:8001/docs)
 - 📂 **Expedientes API:** [http://localhost:8002/docs](http://localhost:8002/docs)
-- 📦 **Insumos API:** [http://localhost:8004/docs](http://localhost:8004/docs)
 - 👨‍⚕️ **Personal API:** [http://localhost:8005/docs](http://localhost:8005/docs)
 
 ---

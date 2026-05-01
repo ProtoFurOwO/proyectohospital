@@ -2,14 +2,8 @@ import asyncpg
 import os
 import asyncio
 
-# Configuración preparada para AWS / Docker (usar variables de entorno)
-DB_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_USER = os.getenv("POSTGRES_USER", "hospital")
-DB_PASS = os.getenv("POSTGRES_PASSWORD", "hospital123")
-DB_NAME = os.getenv("POSTGRES_DB", "expedientes")
-
-DB_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Configuración preparada para AWS / Docker
+DB_URL = os.getenv("POSTGRES_EXPEDIENTES_URL", "postgresql://hospital:hospital123@127.0.0.1:5432/expedientes")
 
 pool = None
 

@@ -158,7 +158,6 @@ async def siguiente_paciente_id() -> int:
             return val[0] + 1
 
 @app.get("/health")
-@app.get("/citas/health")
 async def health():
     return {"status": "ok", "service": "citas", "db": "mysql", "port": 8001}
 
@@ -264,25 +263,6 @@ async def get_citas(
             "estado": "programada"
         })
     return resultado
-
-@app.get("/citas/estadisticas/resumen")
-async def estadisticas():
-    """Resumen de citas (MySQL)"""
-    pool = await get_pool()
-    if not pool: return {"total": 0}
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT COUNT(*) FROM citas_legacy")
-            total = await cur.fetchone()
-            
-    return {
-        "total": total[0] if total else 0,
-        "programadas": total[0] if total else 0,
-        "completadas": 0,
-        "canceladas": 0,
-        "urgencias": 0,
-        "con_expediente": 0,
-    }
 
 @app.get("/citas/{cita_id}")
 async def get_cita(cita_id: int):
@@ -477,6 +457,24 @@ async def reprogramar_cita(cita_id: int, nueva_fecha: datetime):
     emit_log_bg("INFO", "CITAS", "UPDATE", "PACIENTE", f"reprogramar_cita_{cita_id}")
     return {"success": True, "message": "Cita reprogramada"}
 
+@app.get("/citas/estadisticas/resumen")
+async def estadisticas():
+    """Resumen de citas (MySQL)"""
+    pool = await get_pool()
+    if not pool: return {"total": 0}
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT COUNT(*) FROM citas_legacy")
+            total = await cur.fetchone()
+            
+    return {
+        "total": total[0] if total else 0,
+        "programadas": total[0] if total else 0,
+        "completadas": 0,
+        "canceladas": 0,
+        "urgencias": 0,
+        "con_expediente": 0,
+    }
 
 if __name__ == "__main__":
     import uvicorn

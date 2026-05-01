@@ -2,14 +2,12 @@ import asyncio
 import csv
 import aiomysql
 import asyncpg
-from motor.motor_asyncio import AsyncIOMotorClient
 import redis.asyncio as redis
 
 # Configuración de conexiones a las 5 Bases de Datos
 MYSQL_URL = {"host": "127.0.0.1", "port": 3306, "user": "hospital", "password": "hospital123", "db": "citas"}
 POSTGRES_URL = "postgresql://hospital:hospital123@127.0.0.1:5432/expedientes"
 MARIADB_URL = {"host": "127.0.0.1", "port": 3307, "user": "hospital", "password": "hospital123", "db": "quirofanos"}
-MONGO_URL = "mongodb://hospital:hospital123@127.0.0.1:27017"
 REDIS_URL = "redis://:hospital123@127.0.0.1:6379/0"
 
 CSV_PATH = "expedientes_hospital_generados (1).csv"
@@ -90,15 +88,6 @@ async def main():
         return
 
     try:
-        mongo_client = AsyncIOMotorClient(MONGO_URL)
-        mongo_db = mongo_client.insumos
-        mongo_collection = mongo_db.consumos
-        print("[OK] Conectado a MongoDB (Insumos)")
-    except Exception as e:
-        print(f"[FAIL] Error MongoDB: {e}")
-        return
-
-    try:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
         print("[OK] Conectado a Redis (Personal)")
@@ -167,15 +156,6 @@ async def main():
                     ))
                     await conn.commit()
 
-            # --- 4. MongoDB (Insumos) ---
-            documento = {
-                "transfusion_sangre": row.get("¿El paciente recibió alguna transfusión durante el evento quirúrgico?", ""),
-                "tecnica_anestesica": row.get("Técnica anestésica", ""),
-                "cirugia_realizada": row.get("Cirugía realizada", ""),
-                "paciente": row.get("Nombre del paciente", "")
-            }
-            await mongo_collection.insert_one(documento)
-
             # --- 5. Redis (Personal Médico) ---
             cirujano = row.get("Cirujano responsable del acto quirúrgico", "").strip()
             especialidad = row.get("Especialidad quirúrgica", "").strip()
@@ -194,7 +174,7 @@ async def main():
                     "rol": "Anestesista"
                 })
 
-    print(f"\n[Exito] Migracion completada! Se procesaron {registros} filas del CSV en 5 bases de datos de forma paralela.")
+    print(f"\n[Exito] Migracion completada! Se procesaron {registros} filas del CSV en 4 bases de datos de forma paralela.")
 
 if __name__ == "__main__":
     asyncio.run(main())
