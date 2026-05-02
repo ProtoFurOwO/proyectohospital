@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-const API_URL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8003'
+import { API } from '../config'
+const API_URL = API.quirofanos
 
 function QuirofanoCard({ quirofano, onUpdate, onManualStart }) {
   const [loading, setLoading] = useState(false)

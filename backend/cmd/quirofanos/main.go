@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hospital-system/internal/models"
+	"os"
 )
 
 // QuirofanoService maneja el estado de los quirófanos
@@ -23,7 +24,12 @@ var (
 	quirofanoSvc *QuirofanoService
 )
 
-const logAnalyzerURL = "http://localhost:8006/logs"
+var logAnalyzerURL = func() string {
+	if v := os.Getenv("LOG_ANALYZER_URL"); v != "" {
+		return v
+	}
+	return "http://localhost:8006/logs"
+}()
 
 func init() {
 	// Inicializar 30 quirófanos
@@ -80,8 +86,12 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "quirofanos"})
 	}))
 
-	log.Println("🏥 Servicio de Quirófanos iniciado en puerto 8003")
-	log.Fatal(http.ListenAndServe(":8003", nil))
+	bindAddr := os.Getenv("BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = ":8003"
+	}
+	log.Printf("🏥 Servicio de Quirófanos iniciado en %s", bindAddr)
+	log.Fatal(http.ListenAndServe(bindAddr, nil))
 }
 
 // ================= HANDLERS DE QUIRÓFANOS =================

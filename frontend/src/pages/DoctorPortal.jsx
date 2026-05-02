@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
-const API_PERSONAL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8005'
+import { API } from '../config'
+const API_PERSONAL = API.personal
 
 const TURNOS = [
   { key: 'manana', nombre: 'Manana' },

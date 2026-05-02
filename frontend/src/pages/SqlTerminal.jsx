@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import TokenTable from '../components/TokenTable'
 import LogConsole from '../components/LogConsole'
+import { API } from '../config'
 
-const API_URL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8006'
+const API_URL = API.compiler
 
 function SqlTerminal() {
   const [query, setQuery] = useState('CREATE DATABASE hospital;')
