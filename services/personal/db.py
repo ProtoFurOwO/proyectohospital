@@ -32,6 +32,10 @@ async def init_db():
             print("[OK] Conexion establecida con Redis (Personal)")
             break
         except Exception as exc:
+            if "password is set" in str(exc) or "AuthenticationError" in str(type(exc)):
+                print("Reintentando conexion a Redis sin contraseña...")
+                url = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+                continue
             print(f"Esperando a Redis... {exc}")
             await asyncio.sleep(2)
 
