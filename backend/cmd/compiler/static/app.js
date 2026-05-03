@@ -138,7 +138,7 @@ async function tokenize() {
   }
 
   try {
-    const payload = await api('/sql/tokenize', {
+    const payload = await api('sql/tokenize', {
       method: 'POST',
       body: JSON.stringify({ query })
     });
@@ -158,7 +158,7 @@ async function execute() {
   runBtn.textContent = 'Ejecutando...';
 
   try {
-    const payload = await api('/sql/execute', {
+    const payload = await api('sql/execute', {
       method: 'POST',
       body: JSON.stringify({ query })
     });
@@ -176,7 +176,7 @@ async function execute() {
 
 async function clearLogs() {
   try {
-    await api('/sql/logs', { method: 'DELETE' });
+    await api('sql/logs', { method: 'DELETE' });
     await loadLogs();
   } catch {
     renderResult(false, 'No se pudieron limpiar los logs.');
@@ -185,7 +185,7 @@ async function clearLogs() {
 
 async function loadLogs() {
   try {
-    const payload = await api('/sql/logs');
+    const payload = await api('sql/logs');
     renderLogs(payload || []);
   } catch {
     renderLogs([]);
@@ -252,7 +252,7 @@ let pollingInterval = null;
 
 async function fetchCentralLogs() {
   try {
-    const data = await api('/logs');
+    const data = await api('logs');
     centralLogsData = data.entries || [];
     statTotal.textContent = data.total || 0;
     statValid.textContent = data.valid || 0;
@@ -340,7 +340,7 @@ togglePollingBtn.addEventListener('click', () => {
 
 clearAllLogsBtn.addEventListener('click', async () => {
   try {
-    await api('/logs', { method: 'DELETE' });
+    await api('logs', { method: 'DELETE' });
     await fetchCentralLogs();
   } catch (err) {
     console.error('Error limpiando logs', err);
@@ -369,7 +369,7 @@ loginBtn.addEventListener('click', async () => {
   const pass = loginPass.value;
 
   try {
-    const response = await fetch('/api/login', {
+    const response = await fetch('api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: user, password: pass })
