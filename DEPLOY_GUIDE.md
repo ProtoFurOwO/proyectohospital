@@ -629,6 +629,208 @@ Invoke-WebRequest "http://localhost" -UseBasicParsing
 
 ---
 
+## FASE 6: HTTPS / SSL con Let's Encrypt (win-acme)
+
+> Ejecutar todo esto en el **Servidor Frontend (10.0.1.4)**
+
+### 6.1 Descargar win-acme
+
+```powershell
+# Crear carpeta
+New-Item -ItemType Directory -Path C:\win-acme -Force
+
+# Descargar la última versión
+Invoke-WebRequest -Uri "https://github.com/win-acme/win-acme/releases/download/v2.2.9.1/win-acme.v2.2.9.1.x64.pluggable.zip" -OutFile "C:\win-acme\wacs.zip"
+
+# Extraer
+Expand-Archive -Path "C:\win-acme\wacs.zip" -DestinationPath "C:\win-acme" -Force
+```
+
+### 6.2 Crear carpeta para certificados
+
+```powershell
+New-Item -ItemType Directory -Path C:\nginx\ssl -Force
+```
+
+### 6.3 Obtener el certificado SSL
+
+> **IMPORTANTE**: Nginx debe estar corriendo en puerto 80 para que Let's Encrypt pueda verificar tu dominio.
+
+```powershell
+cd C:\win-acme
+.\wacs.exe --target manual --host hospital-comtd.duckdns.org --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
+```
+
+Cuando pregunte, acepta los términos. Si todo sale bien, verás archivos `.pem` en `C:\nginx\ssl\`.
+
+> **Si el selfhosting falla** porque el puerto 80 ya está ocupado por Nginx, usa este método alternativo:
+> ```powershell
+> # Detener Nginx temporalmente
+> cd C:\nginx
+> .\nginx.exe -s stop
+>
+> # Correr wacs con validación standalone
+> cd C:\win-acme
+> .\wacs.exe --target manual --host hospital-comtd.duckdns.org --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
+>
+> # Cuando termine, volver a arrancar Nginx (ya con la config SSL)
+> ```
+
+### 6.4 Actualizar nginx.conf con HTTPS
+
+Reemplazar **todo** `C:\nginx\conf\nginx.conf` con esta versión:
+
+```nginx
+worker_processes  auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile      on;
+    keepalive_timeout 65;
+
+    # ── Upstreams: microservicios via VPC privada ──
+    upstream svc_citas       { server 10.0.1.3:8001; }
+    upstream svc_expedientes { server 10.0.1.3:8002; }
+    upstream svc_quirofanos  { server 10.0.1.3:8003; }
+    upstream svc_personal    { server 10.0.1.3:8005; }
+    upstream svc_compiler    { server 10.0.1.3:8006; }
+
+    # ── Redirigir HTTP → HTTPS ──
+    server {
+        listen 80;
+        server_name hospital-comtd.duckdns.org;
+        return 301 https://$host$request_uri;
+    }
+
+    # ── Servidor HTTPS principal ──
+    server {
+        listen 443 ssl;
+        server_name hospital-comtd.duckdns.org;
+
+        # ── Certificados SSL (Let's Encrypt via win-acme) ──
+        ssl_certificate      C:/nginx/ssl/hospital-comtd.duckdns.org-chain.pem;
+        ssl_certificate_key  C:/nginx/ssl/hospital-comtd.duckdns.org-key.pem;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+
+        # ── React SPA (archivos estaticos) ──
+        root C:/nginx/html;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # ── JWT Login (publico, sin auth) ──
+        location = /api/login {
+            proxy_pass http://svc_compiler/api/login;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # ── API Gateway: Citas ──
+        location /api/v1/citas/ {
+            proxy_pass http://svc_citas/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ── API Gateway: Expedientes ──
+        location /api/v1/expedientes/ {
+            proxy_pass http://svc_expedientes/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ── API Gateway: Quirofanos ──
+        location /api/v1/quirofanos/ {
+            proxy_pass http://svc_quirofanos/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ── API Gateway: Personal ──
+        location /api/v1/personal/ {
+            proxy_pass http://svc_personal/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ── API Gateway: Motor SQL / Compiladores ──
+        location /api/v1/compiler/ {
+            proxy_pass http://svc_compiler/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        # ── Compilador UI (acceso directo) ──
+        location /compiler/ {
+            proxy_pass http://svc_compiler/;
+            proxy_set_header Host $host;
+            proxy_set_header Authorization $http_authorization;
+        }
+
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html { root html; }
+    }
+}
+```
+
+### 6.5 Probar y reiniciar Nginx
+
+```powershell
+cd C:\nginx
+
+# Verificar que la config no tenga errores
+.\nginx.exe -t
+
+# Si dice "test is successful", reiniciar:
+.\nginx.exe -s stop
+Start-Process .\nginx.exe
+```
+
+### 6.6 Abrir puerto 443 en el Firewall
+
+```powershell
+New-NetFirewallRule -DisplayName "Hospital-HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+```
+
+### 6.7 Verificar HTTPS
+
+Abre en tu navegador:
+```
+https://hospital-comtd.duckdns.org
+```
+
+Deberías ver el candadito 🔒 y el sistema cargando correctamente.
+
+> **NOTA sobre nombres de archivos .pem:** Si win-acme genera archivos con nombres diferentes, lista los archivos con `dir C:\nginx\ssl\` y ajusta los nombres en `nginx.conf` para que coincidan. Los que necesitas son:
+> - El que termina en `-chain.pem` o `-crt.pem` → va en `ssl_certificate`
+> - El que termina en `-key.pem` → va en `ssl_certificate_key`
+
+### 6.8 Renovación Automática
+
+win-acme crea una tarea programada automáticamente para renovar el certificado antes de que expire (cada 60 días). Puedes verificarla con:
+
+```powershell
+Get-ScheduledTask | Where-Object {$_.TaskName -like "*acme*"}
+```
+
+---
+
 ## Resumen de IPs y Puertos
 
 | Servicio | Servidor | IP Privada | Puerto | Tecnología |
