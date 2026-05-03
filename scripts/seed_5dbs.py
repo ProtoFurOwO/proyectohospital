@@ -27,8 +27,6 @@ async def setup_mysql():
                     numero_expediente_clinico VARCHAR(255)
                 );
             """)
-            await cur.execute("ALTER TABLE citas_legacy ADD COLUMN IF NOT EXISTS paciente_nombre VARCHAR(255);")
-            await cur.execute("ALTER TABLE citas_legacy ADD COLUMN IF NOT EXISTS numero_expediente_clinico VARCHAR(255);")
             await conn.commit()
     return pool
 
@@ -66,6 +64,15 @@ async def setup_mariadb():
 
 async def main():
     print("Conectando y configurando las 5 Bases de Datos...")
+    # Intentar conexión a Redis sin pass si falla con pass
+    redis_url = REDIS_URL
+    try:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        await redis_client.ping()
+    except Exception:
+        redis_url = "redis://127.0.0.1:6379/0"
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+
     try:
         mysql_pool = await setup_mysql()
         print("[OK] Conectado a MySQL (Citas)")
@@ -88,7 +95,6 @@ async def main():
         return
 
     try:
-        redis_client = redis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
         print("[OK] Conectado a Redis (Personal)")
     except Exception as e:
