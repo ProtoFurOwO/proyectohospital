@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { API } from '../config'
 
 const ESPECIALIDADES = [
-  "Cirugia General", "Traumatologia", "Cardiologia",
+  "Cirugia General", "Traumatologia", "Gastroenterologia", "Cardiologia",
   "Oftalmologia", "Neurologia", "Oncologia", "Pediatria", "Ginecologia"
 ]
 

@@ -160,8 +160,12 @@ CATALOGOS_EXCEL = {
         "Cirugia General",
         "Traumatologia",
         "Gastroenterologia",
+        "Cardiologia",
+        "Oftalmologia",
         "Neurologia",
-        "Pediatria"
+        "Oncologia",
+        "Pediatria",
+        "Ginecologia"
     ]
 }
 

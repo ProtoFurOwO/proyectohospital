@@ -82,13 +82,13 @@ function App() {
             className={`nav-tab ${activeTab === 'citas-admin' ? 'active' : ''}`}
             onClick={() => setActiveTab('citas-admin')}
           >
-            Citas Admin
+            Citas
           </button>
           <button
             className={`nav-tab ${activeTab === 'expedientes-admin' ? 'active' : ''}`}
             onClick={() => setActiveTab('expedientes-admin')}
           >
-            Expedientes Admin
+            Expedientes
           </button>
 
           {/* === Tabs admin (solo con login) === */}
