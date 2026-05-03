@@ -359,13 +359,13 @@ def registrar_operacion_programada(medico_id: int, fecha_iso: str):
     agenda_operaciones_db[fecha_iso][medico_id] = operaciones_programadas_en_fecha(medico_id, fecha_iso) + 1
 
 def medico_tiene_cupo_en_fecha(medico: Medico, fecha_obj: date) -> bool:
-    hoy = date.today()
-
-    if fecha_obj == hoy:
-        return medico.disponible and medico.operaciones_hoy < medico.max_operaciones
-
+    # Siempre usar rotacion dinamica por fecha, no el flag estatico de arranque
     if not medico_disponible_por_rotacion_en_fecha(medico, fecha_obj):
         return False
+
+    hoy = date.today()
+    if fecha_obj == hoy:
+        return medico.operaciones_hoy < medico.max_operaciones
 
     fecha_iso = fecha_obj.isoformat()
     return operaciones_programadas_en_fecha(medico.id, fecha_iso) < medico.max_operaciones
@@ -531,6 +531,7 @@ async def get_medicos(
     disponible: Optional[bool] = None
 ):
     """Obtiene medicos con filtros"""
+    hoy = date.today()
     resultado = []
     for medico in medicos_db:
         nombre = normalizar_nombre_medico(medico.nombre)
@@ -539,6 +540,8 @@ async def get_medicos(
             medico.nombre = nombre
         if turno_actual != medico.turno:
             medico.turno = turno_actual
+        # Recalcular disponibilidad dinamicamente con rotacion
+        medico.disponible = medico_tiene_cupo_en_fecha(medico, hoy)
         resultado.append(medico)
 
     resultado = sorted(resultado, key=lambda m: m.id or 0)

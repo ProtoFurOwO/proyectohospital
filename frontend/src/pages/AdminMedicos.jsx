@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { API } from '../config'
 
 const ESPECIALIDADES = [
   "Cirugia General", "Traumatologia", "Cardiologia",
@@ -16,7 +17,7 @@ export default function AdminMedicos() {
 
   const fetchMedicos = async () => {
     try {
-      const res = await fetch('http://localhost:8005/personal/medicos')
+      const res = await fetch(`${API.personal}/personal/medicos`)
       if (res.ok) {
         const data = await res.json()
         setMedicos(Array.isArray(data) ? data : [])
@@ -49,7 +50,7 @@ export default function AdminMedicos() {
         nombre: formData.nombre,
         especialidad: formData.especialidad
       }
-      const res = await fetch('http://localhost:8005/personal/medicos', {
+      const res = await fetch(`${API.personal}/personal/medicos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -75,7 +76,7 @@ export default function AdminMedicos() {
   const handleDelete = async (id) => {
     if (!window.confirm("¿Seguro que deseas eliminar este médico?")) return
     try {
-      const res = await fetch(`http://localhost:8005/personal/medicos/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${API.personal}/personal/medicos/${id}`, { method: 'DELETE' })
       if (res.ok) {
         fetchMedicos()
       }

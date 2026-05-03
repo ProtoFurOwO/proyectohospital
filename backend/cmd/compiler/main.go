@@ -7,11 +7,23 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"hospital-system/compiler"
 	"hospital-system/loganalyzer"
+	"github.com/golang-jwt/jwt/v5"
 )
+
+var jwtSecret = []byte("super-secret-key-hospital")
+var adminUser = "admin"
+var adminPass = "hospital2026"
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -52,13 +64,16 @@ func main() {
 	mux := http.NewServeMux()
 	cors := corsMiddleware
 
-	// ── Endpoints SQL existentes (sin cambios) ──
-	mux.HandleFunc("/sql/execute", cors(sqlSvc.handleSQLExecute))
-	mux.HandleFunc("/sql/tokenize", cors(sqlSvc.handleSQLTokenize))
-	mux.HandleFunc("/sql/logs", cors(sqlSvc.handleSQLLogs))
+	// ── Auth Endpoint ──
+	mux.HandleFunc("/api/login", cors(handleLogin))
 
-	// ── Nuevos endpoints: Visor de Logs (Analizador Léxico/Sintáctico) ──
-	mux.HandleFunc("/logs", cors(handleLogs))
+	// ── Endpoints SQL existentes (protegidos con JWT) ──
+	mux.HandleFunc("/sql/execute", cors(jwtMiddleware(sqlSvc.handleSQLExecute)))
+	mux.HandleFunc("/sql/tokenize", cors(jwtMiddleware(sqlSvc.handleSQLTokenize)))
+	mux.HandleFunc("/sql/logs", cors(jwtMiddleware(sqlSvc.handleSQLLogs)))
+
+	// ── Nuevos endpoints: Visor de Logs (protegidos con JWT) ──
+	mux.HandleFunc("/logs", cors(jwtMiddleware(handleLogs)))
 
 	// ── Health ──
 	mux.HandleFunc("/health", cors(func(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +100,13 @@ func main() {
 		}
 	}))
 
-	log.Println("📊 Servicio de Compiladores + Log Analyzer iniciado en puerto 8006")
-	log.Println("🌐 UI SQL disponible en http://localhost:8006")
+	bindAddr := os.Getenv("BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = ":8006"
+	}
+	log.Printf("📊 Servicio de Compiladores + Log Analyzer iniciado en %s", bindAddr)
 	log.Println("🔧 API SQL en /sql/execute | Logs en POST/GET /logs")
-	log.Fatal(http.ListenAndServe(":8006", mux))
+	log.Fatal(http.ListenAndServe(bindAddr, mux))
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -168,6 +186,75 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  JWT Authentication
+// ═══════════════════════════════════════════════════════════════
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"JSON invalido"}`, http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == adminUser && req.Password == adminPass {
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub": req.Username,
+			"exp": time.Now().Add(time.Hour * 24).Unix(),
+		})
+
+		tokenString, err := token.SignedString(jwtSecret)
+		if err != nil {
+			http.Error(w, `{"error":"Error al generar token"}`, http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"token": tokenString,
+		})
+		return
+	}
+
+	http.Error(w, `{"error":"Credenciales invalidas"}`, http.StatusUnauthorized)
+}
+
+func jwtMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, `{"error":"Falta Authorization header"}`, http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, `{"error":"Formato de token invalido"}`, http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := parts[1]
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("metodo de firma inesperado: %v", token.Header["alg"])
+			}
+			return jwtSecret, nil
+		})
+
+		if err != nil || !token.Valid {
+			http.Error(w, `{"error":"Token invalido o expirado"}`, http.StatusUnauthorized)
 			return
 		}
 

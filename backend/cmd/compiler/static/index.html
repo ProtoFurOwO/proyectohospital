@@ -7,6 +7,23 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+      <div class="login-modal">
+        <h2 class="login-title">Acceso Motor SQL</h2>
+        <p class="login-subtitle">Ingresa tus credenciales para acceder al compilador</p>
+        <div class="login-field">
+          <label>Usuario</label>
+          <input type="text" id="login-user" placeholder="admin" autofocus />
+        </div>
+        <div class="login-field">
+          <label>Contraseña</label>
+          <input type="password" id="login-pass" placeholder="••••••••" />
+        </div>
+        <div id="login-error" class="login-error hidden">Credenciales inválidas</div>
+        <button id="login-btn" class="btn success login-btn">Iniciar sesión</button>
+      </div>
+    </div>
     <header class="header">
       <div>
         <h1>Motor SQL - Compiladores</h1>

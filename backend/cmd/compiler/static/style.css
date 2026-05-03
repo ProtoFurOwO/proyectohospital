@@ -426,3 +426,85 @@ td {
   text-transform: uppercase;
 }
 
+/* --- LOGIN OVERLAY --- */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-overlay.hidden {
+  display: none;
+}
+
+.login-modal {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.login-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: #e2e8f0;
+}
+
+.login-subtitle {
+  margin: 0 0 1.5rem 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.login-field {
+  margin-bottom: 1rem;
+}
+
+.login-field label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.login-field input {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: inherit;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.login-error {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.login-btn {
+  padding: 0.75rem;
+  font-weight: bold;
+  margin-top: 0.5rem;
+}

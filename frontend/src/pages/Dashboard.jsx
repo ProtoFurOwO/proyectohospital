@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import QuirofanoCard from '../components/QuirofanoCard'
 
-const API_URL = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8003'
-const API_EXPEDIENTES = import.meta.env.VITE_API_BASE ? import.meta.env.VITE_API_BASE : 'http://localhost:8002'
+import { API } from '../config'
+const API_URL = API.quirofanos
+const API_EXPEDIENTES = API.expedientes
 
 function Dashboard() {
   const [quirofanos, setQuirofanos] = useState([])

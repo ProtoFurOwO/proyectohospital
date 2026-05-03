@@ -7,6 +7,13 @@ const logsEl = document.getElementById('logs');
 const resultEl = document.getElementById('result');
 const examplesEl = document.getElementById('examples');
 
+// Login Elements
+const loginOverlay = document.getElementById('login-overlay');
+const loginUser = document.getElementById('login-user');
+const loginPass = document.getElementById('login-pass');
+const loginBtn = document.getElementById('login-btn');
+const loginError = document.getElementById('login-error');
+
 const EXAMPLES = [
   'CREATE DATABASE hospital;',
   'USE hospital;',
@@ -29,8 +36,15 @@ EXAMPLES.forEach((example) => {
 });
 
 async function api(path, options = {}) {
+  const token = sessionStorage.getItem('compiler_jwt');
+  const headers = { 'Content-Type': 'application/json' };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...headers, ...options.headers },
     ...options
   });
 
@@ -340,3 +354,48 @@ filterModulo.addEventListener('change', renderCentralLogs);
 fetchCentralLogs();
 setupPolling();
 
+// --- LOGIN LOGIC ---
+function checkLogin() {
+  const token = sessionStorage.getItem('compiler_jwt');
+  if (!token) {
+    loginOverlay.classList.remove('hidden');
+  } else {
+    loginOverlay.classList.add('hidden');
+  }
+}
+
+loginBtn.addEventListener('click', async () => {
+  const user = loginUser.value;
+  const pass = loginPass.value;
+
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      sessionStorage.setItem('compiler_jwt', data.token);
+      loginOverlay.classList.add('hidden');
+      loginError.classList.add('hidden');
+      // Re-fetch now that we have token
+      fetchCentralLogs();
+    } else {
+      loginError.classList.remove('hidden');
+      loginError.textContent = 'Credenciales inválidas';
+    }
+  } catch (err) {
+    loginError.classList.remove('hidden');
+    loginError.textContent = 'Error de conexión';
+  }
+});
+
+// Allow Enter key to submit
+loginPass.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loginBtn.click();
+});
+
+// Run check on load
+checkLogin();
