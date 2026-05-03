@@ -6,7 +6,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        INTERNET                                     │
 │                                                                     │
-│  Landing Page (Vercel) ──→ hospital-comtd.duckdns.org              │
+│  Landing Page (Vercel) ──→ hospital.stolsimprojects.tech              │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │ HTTPS (Cloudflare)
                                  ▼
@@ -38,7 +38,7 @@
 ### 0.1 Registrar DuckDNS
 
 1. Ir a **https://www.duckdns.org** → Login con Google
-2. Crear subdominio: `hospital-comtd` → obtienes `hospital-comtd.duckdns.org`
+2. Crear subdominio: `hospital-comtd` → obtienes `hospital.stolsimprojects.tech`
 3. Escribir la IP pública del Frontend: `45.63.21.244` → click "update ip"
 4. Guardar tu **token** (aparece arriba en la página)
 
@@ -63,7 +63,7 @@ cloudflared tunnel login
 cloudflared tunnel create hospital
 
 # Configurar tunnel
-cloudflared tunnel route dns hospital hospital-comtd.duckdns.org
+cloudflared tunnel route dns hospital hospital.stolsimprojects.tech
 ```
 
 **Opción más simple: Solo DuckDNS sin HTTPS (para demo en clase)**
@@ -364,7 +364,7 @@ http {
 
     server {
         listen 80;
-        server_name hospital-comtd.duckdns.org 45.63.21.244;
+        server_name hospital.stolsimprojects.tech 45.63.21.244;
 
         # ── React SPA (archivos estaticos) ──
         root C:/nginx/html;
@@ -583,12 +583,12 @@ $body = '{"username":"admin","password":"hospital2026"}'
 
 ### Desde Internet (tu laptop):
 ```
-http://hospital-comtd.duckdns.org          → React App
-http://hospital-comtd.duckdns.org/api/login → JWT (POST)
+http://hospital.stolsimprojects.tech          → React App
+http://hospital.stolsimprojects.tech/api/login → JWT (POST)
 ```
 
 ### Desde la Landing Page (Vercel):
-El botón "Acceder al sistema" debe apuntar a `http://hospital-comtd.duckdns.org`
+El botón "Acceder al sistema" debe apuntar a `http://hospital.stolsimprojects.tech`
 
 ---
 
@@ -624,7 +624,7 @@ Invoke-WebRequest "http://localhost" -UseBasicParsing
 | "Connection refused" en proxy | Verificar que los servicios escuchen en `10.0.1.3` con `healthcheck.ps1` |
 | Frontend carga pero APIs fallan | Verificar firewall del backend: `Get-NetFirewallRule -DisplayName "Hospital*"` |
 | Microservicio no conecta a DB | Asegúrate de haber instalado MySQL, Postgres, MariaDB y Redis y que los servicios estén corriendo en Windows (services.msc). Verifica puertos (3306, 5432, 3307, 6379). |
-| DuckDNS no resuelve | Esperar 5 min, verificar en `nslookup hospital-comtd.duckdns.org` |
+| DuckDNS no resuelve | Esperar 5 min, verificar en `nslookup hospital.stolsimprojects.tech` |
 | VPC no conecta | Verificar MTU: `netsh interface ipv4 set subinterface "Ethernet 2" mtu=1450 store=persistent` |
 
 ---
@@ -658,7 +658,7 @@ New-Item -ItemType Directory -Path C:\nginx\ssl -Force
 
 ```powershell
 cd C:\win-acme
-.\wacs.exe --target manual --host hospital-comtd.duckdns.org --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
+.\wacs.exe --target manual --host hospital.stolsimprojects.tech --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
 ```
 
 Cuando pregunte, acepta los términos. Si todo sale bien, verás archivos `.pem` en `C:\nginx\ssl\`.
@@ -671,7 +671,7 @@ Cuando pregunte, acepta los términos. Si todo sale bien, verás archivos `.pem`
 >
 > # Correr wacs con validación standalone
 > cd C:\win-acme
-> .\wacs.exe --target manual --host hospital-comtd.duckdns.org --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
+> .\wacs.exe --target manual --host hospital.stolsimprojects.tech --validation selfhosting --store pemfiles --pemfilespath C:\nginx\ssl
 >
 > # Cuando termine, volver a arrancar Nginx (ya con la config SSL)
 > ```
@@ -703,18 +703,18 @@ http {
     # ── Redirigir HTTP → HTTPS ──
     server {
         listen 80;
-        server_name hospital-comtd.duckdns.org;
+        server_name hospital.stolsimprojects.tech;
         return 301 https://$host$request_uri;
     }
 
     # ── Servidor HTTPS principal ──
     server {
         listen 443 ssl;
-        server_name hospital-comtd.duckdns.org;
+        server_name hospital.stolsimprojects.tech;
 
         # ── Certificados SSL (Let's Encrypt via win-acme) ──
-        ssl_certificate      C:/nginx/ssl/hospital-comtd.duckdns.org-chain.pem;
-        ssl_certificate_key  C:/nginx/ssl/hospital-comtd.duckdns.org-key.pem;
+        ssl_certificate      C:/nginx/ssl/hospital.stolsimprojects.tech-chain.pem;
+        ssl_certificate_key  C:/nginx/ssl/hospital.stolsimprojects.tech-key.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
@@ -812,7 +812,7 @@ New-NetFirewallRule -DisplayName "Hospital-HTTPS" -Direction Inbound -Protocol T
 
 Abre en tu navegador:
 ```
-https://hospital-comtd.duckdns.org
+https://hospital.stolsimprojects.tech
 ```
 
 Deberías ver el candadito 🔒 y el sistema cargando correctamente.
