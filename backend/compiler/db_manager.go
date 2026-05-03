@@ -15,8 +15,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-	PGDB    *sql.DB
-)
+var PGDB *sql.DB
 
 type CatalogEntry struct {
 	Engine string
