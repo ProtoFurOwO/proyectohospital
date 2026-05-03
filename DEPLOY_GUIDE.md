@@ -209,7 +209,7 @@ $env:POSTGRES_EXPEDIENTES_URL = "postgresql://hospital:hospital123@127.0.0.1:543
 $env:POSTGRES_URL = "postgresql://hospital:hospital123@127.0.0.1:5432/expedientes?sslmode=disable"
 $env:REDIS_HOST = "127.0.0.1"
 $env:REDIS_PORT = "6379"
-$env:REDIS_PASSWORD = "hospital123"
+$env:REDIS_PASSWORD = ""
 
 # --- URLs inter-servicio (para el Motor SQL que consulta otros servicios) ---
 $env:CITAS_API_URL = "http://${BACKEND_IP}:8001"
