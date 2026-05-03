@@ -640,7 +640,7 @@ Invoke-WebRequest "http://localhost" -UseBasicParsing
 New-Item -ItemType Directory -Path C:\win-acme -Force
 
 # Descargar la última versión
-Invoke-WebRequest -Uri "https://github.com/win-acme/win-acme/releases/download/v2.2.9.1/win-acme.v2.2.9.1.x64.pluggable.zip" -OutFile "C:\win-acme\wacs.zip"
+Invoke-WebRequest -Uri "https://github.com/win-acme/win-acme/releases/download/v2.2.9.1701/win-acme.v2.2.9.1701.x64.pluggable.zip" -OutFile "C:\win-acme\wacs.zip"
 
 # Extraer
 Expand-Archive -Path "C:\win-acme\wacs.zip" -DestinationPath "C:\win-acme" -Force
