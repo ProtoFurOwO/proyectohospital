@@ -182,5 +182,14 @@ async def main():
 
     print(f"\n[Exito] Migracion completada! Se procesaron {registros} filas del CSV en 4 bases de datos de forma paralela.")
 
+    # Cerrar pools para evitar el error de "Event loop is closed" en Windows
+    mysql_pool.close()
+    await mysql_pool.wait_closed()
+    
+    await pg_pool.close()
+    
+    mariadb_pool.close()
+    await mariadb_pool.wait_closed()
+
 if __name__ == "__main__":
     asyncio.run(main())
