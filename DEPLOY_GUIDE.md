@@ -176,8 +176,6 @@ Dado que las VPC de Vultr no siempre soportan virtualización anidada para Docke
 $ports = @(8001, 8002, 8003, 8005, 8006)
 foreach ($port in $ports) {
     New-NetFirewallRule -DisplayName "Hospital-VPC-$port" -Direction Inbound -Protocol TCP -LocalPort $port -RemoteAddress "10.0.1.4" -Action Allow
-    # Bloquear acceso público a esos puertos
-    New-NetFirewallRule -DisplayName "Hospital-Block-$port" -Direction Inbound -Protocol TCP -LocalPort $port -RemoteAddress "Any" -Action Block
 }
 
 # Docker ya maneja sus propios puertos internamente, no necesitan reglas extra
