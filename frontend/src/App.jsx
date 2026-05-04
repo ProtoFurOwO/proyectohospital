@@ -12,6 +12,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('horarios')
   const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem('hospital_admin') === '1')
   const [showLoginModal, setShowLoginModal] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [loginUser, setLoginUser] = useState('')
   const [loginPass, setLoginPass] = useState('')
   const [loginError, setLoginError] = useState('')
@@ -63,30 +64,35 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Sistema Hospitalario</h1>
-        <nav className="nav-tabs">
+        <div className="header-brand">
+          <h1>Sistema Hospitalario</h1>
+          <button className="menu-toggle" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            ☰
+          </button>
+        </div>
+        <nav className={`nav-tabs ${isMenuOpen ? 'open' : ''}`}>
           {/* === Tabs publicos (siempre visibles) === */}
           <button
             className={`nav-tab ${activeTab === 'horarios' ? 'active' : ''}`}
-            onClick={() => setActiveTab('horarios')}
+            onClick={() => { setActiveTab('horarios'); setIsMenuOpen(false); }}
           >
             Ver Horarios
           </button>
           <button
             className={`nav-tab ${activeTab === 'portal-doctor' ? 'active' : ''}`}
-            onClick={() => setActiveTab('portal-doctor')}
+            onClick={() => { setActiveTab('portal-doctor'); setIsMenuOpen(false); }}
           >
             Portal Doctores
           </button>
           <button
             className={`nav-tab ${activeTab === 'citas-admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('citas-admin')}
+            onClick={() => { setActiveTab('citas-admin'); setIsMenuOpen(false); }}
           >
             Citas
           </button>
           <button
             className={`nav-tab ${activeTab === 'expedientes-admin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('expedientes-admin')}
+            onClick={() => { setActiveTab('expedientes-admin'); setIsMenuOpen(false); }}
           >
             Expedientes
           </button>
@@ -96,26 +102,26 @@ function App() {
             <>
               <button
                 className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
-                onClick={() => setActiveTab('dashboard')}
+                onClick={() => { setActiveTab('dashboard'); setIsMenuOpen(false); }}
               >
                 Dashboard Quirofanos
               </button>
               <button
                 className={`nav-tab ${activeTab === 'asignacion' ? 'active' : ''}`}
-                onClick={() => setActiveTab('asignacion')}
+                onClick={() => { setActiveTab('asignacion'); setIsMenuOpen(false); }}
               >
                 Asignar Bloques
               </button>
               <button
                 className={`nav-tab ${activeTab === 'admin-medicos' ? 'active' : ''}`}
-                onClick={() => setActiveTab('admin-medicos')}
+                onClick={() => { setActiveTab('admin-medicos'); setIsMenuOpen(false); }}
                 style={{ color: '#ec4899' }}
               >
                 👨‍⚕️ Admin Médicos
               </button>
               <button
                 className="nav-tab"
-                onClick={() => window.open(window.location.origin + '/compiler/', '_blank')}
+                onClick={() => { window.open(window.location.origin + '/compiler/', '_blank'); setIsMenuOpen(false); }}
                 style={{ color: '#f59e0b' }}
               >
                 ⚙️ Motor SQL
@@ -127,14 +133,14 @@ function App() {
           {!isAdmin ? (
             <button
               className="nav-tab nav-tab-login"
-              onClick={() => setShowLoginModal(true)}
+              onClick={() => { setShowLoginModal(true); setIsMenuOpen(false); }}
             >
               🔒 Admin
             </button>
           ) : (
             <button
               className="nav-tab nav-tab-logout"
-              onClick={handleLogout}
+              onClick={() => { handleLogout(); setIsMenuOpen(false); }}
             >
               🔓 Cerrar sesión
             </button>
