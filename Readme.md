@@ -173,4 +173,4 @@ Pasos recomendados (resumen):
 - Levantar los servicios con `./start.sh` y el Frontend con `npm run dev`.
 
 ---
-*Proyecto desarrollado con fines académicos para la asignatura de Taller 4 y Compiladores.*
+*Proyecto desarrollado con fines académicos para la asignatura de Taller de desarrollo 4 y Compiladores.*
