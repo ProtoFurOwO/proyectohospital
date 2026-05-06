@@ -219,7 +219,7 @@ func ExecuteDeleteQuery(currentDB, tableName, conditions string) (int, error) {
 	dbKey := strings.ToLower(currentDB)
 	resolvedTable := strings.ToLower(tableName)
 
-	_, ok := DatabaseSchema[dbKey]
+	_, ok := tableAliases[dbKey]
 	if !ok {
 		return 0, fmt.Errorf("La tabla '%s' no existe en '%s'", tableName, currentDB)
 	}
