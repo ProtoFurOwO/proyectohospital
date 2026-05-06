@@ -274,9 +274,20 @@ func (e *Executor) executeUpdate(ast *ASTNode) *ExecutionResult {
 }
 
 func (e *Executor) executeDelete(ast *ASTNode) *ExecutionResult {
+	currentDB := e.analyzer.GetCurrentDB()
+	affected, err := ExecuteDeleteQuery(currentDB, ast.Name, ast.Conditions)
+	
+	if err != nil {
+		return &ExecutionResult{
+			Success:   false,
+			Message:   fmt.Sprintf("Error ejecutando DELETE en '%s': %v", ast.Name, err),
+			Timestamp: time.Now(),
+		}
+	}
+
 	return &ExecutionResult{
 		Success:   true,
-		Message:   fmt.Sprintf("Registros eliminados de '%s'", ast.Name),
+		Message:   fmt.Sprintf("Registros eliminados de '%s'. Filas afectadas: %d", ast.Name, affected),
 		Timestamp: time.Now(),
 	}
 }

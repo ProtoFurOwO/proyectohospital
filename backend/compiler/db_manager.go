@@ -210,3 +210,93 @@ func coerceList(items []interface{}) []map[string]interface{} {
 	}
 	return result
 }
+
+func ExecuteDeleteQuery(currentDB, tableName, conditions string) (int, error) {
+	if currentDB == "" {
+		return 0, fmt.Errorf("No hay base de datos seleccionada (usa USE database;)")
+	}
+
+	dbKey := strings.ToLower(currentDB)
+	resolvedTable := strings.ToLower(tableName)
+
+	_, ok := DatabaseSchema[dbKey]
+	if !ok {
+		return 0, fmt.Errorf("La tabla '%s' no existe en '%s'", tableName, currentDB)
+	}
+
+	// Extraer ID de la condicion "id = 23"
+	id := ""
+	parts := strings.Split(strings.TrimSpace(conditions), "=")
+	if len(parts) == 2 && strings.TrimSpace(parts[0]) == "id" {
+		id = strings.TrimSpace(parts[1])
+	}
+
+	if id == "" {
+		return 0, fmt.Errorf("Solo se soporta DELETE con condicion 'id = X'")
+	}
+
+	switch dbKey {
+	case "citas":
+		// Citas usa POST /cancelar
+		return deleteServiceDataWithPost(serviceBaseURL("CITAS_API_URL", "http://localhost:8001"), "/citas/"+id+"/cancelar")
+	case "expedientes":
+		return deletePostgresTable(resolvedTable, id)
+	default:
+		return 0, fmt.Errorf("Delete no soportado para '%s'", currentDB)
+	}
+}
+
+func deleteServiceDataWithPost(baseURL, path string) (int, error) {
+	url := strings.TrimRight(baseURL, "/")
+	req, err := http.NewRequest("POST", url+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("Error al eliminar, codigo: %d", resp.StatusCode)
+	}
+	return 1, nil
+}
+
+func deleteServiceData(baseURL, path string) (int, error) {
+	url := strings.TrimRight(baseURL, "/")
+	req, err := http.NewRequest("DELETE", url+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("Error al eliminar, codigo: %d", resp.StatusCode)
+	}
+	return 1, nil
+}
+
+func deletePostgresTable(tableName, id string) (int, error) {
+	if PGDB == nil {
+		return 0, fmt.Errorf("PostgreSQL no está conectado")
+	}
+
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", tableName)
+	res, err := PGDB.Exec(query, id)
+	if err != nil {
+		return 0, err
+	}
+	
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}

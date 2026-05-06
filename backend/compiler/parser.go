@@ -460,14 +460,24 @@ func (p *Parser) parseSelect() (*ASTNode, error) {
 		return nil, err
 	}
 
+	var conditions string
+	if p.current().Value == "WHERE" {
+		p.advance() // WHERE
+		for p.current().Value != ";" && p.current().Type != EOF {
+			conditions += p.current().Value + " "
+			p.advance()
+		}
+	}
+
 	_, err = p.expect(SYMBOL, ";")
 	if err != nil {
 		return nil, err
 	}
 
 	return &ASTNode{
-		Type: SELECT,
-		Name: nameToken.Value,
+		Type:       SELECT,
+		Name:       nameToken.Value,
+		Conditions: conditions,
 	}, nil
 }
 
@@ -485,10 +495,19 @@ func (p *Parser) parseUpdate() (*ASTNode, error) {
 		return nil, err
 	}
 
-	// Simplificado: leer hasta ;
+	// Simplificado: leer hasta WHERE o ;
 	fields := make(map[string]string)
-	for p.current().Value != ";" && p.current().Type != EOF {
+	for p.current().Value != ";" && p.current().Value != "WHERE" && p.current().Type != EOF {
 		p.advance()
+	}
+
+	var conditions string
+	if p.current().Value == "WHERE" {
+		p.advance()
+		for p.current().Value != ";" && p.current().Type != EOF {
+			conditions += p.current().Value + " "
+			p.advance()
+		}
 	}
 
 	_, err = p.expect(SYMBOL, ";")
@@ -497,9 +516,10 @@ func (p *Parser) parseUpdate() (*ASTNode, error) {
 	}
 
 	return &ASTNode{
-		Type:   UPDATE,
-		Name:   nameToken.Value,
-		Fields: fields,
+		Type:       UPDATE,
+		Name:       nameToken.Value,
+		Fields:     fields,
+		Conditions: conditions,
 	}, nil
 }
 
@@ -517,13 +537,23 @@ func (p *Parser) parseDelete() (*ASTNode, error) {
 		return nil, err
 	}
 
+	var conditions string
+	if p.current().Value == "WHERE" {
+		p.advance()
+		for p.current().Value != ";" && p.current().Type != EOF {
+			conditions += p.current().Value + " "
+			p.advance()
+		}
+	}
+
 	_, err = p.expect(SYMBOL, ";")
 	if err != nil {
 		return nil, err
 	}
 
 	return &ASTNode{
-		Type: DELETE,
-		Name: nameToken.Value,
+		Type:       DELETE,
+		Name:       nameToken.Value,
+		Conditions: conditions,
 	}, nil
 }
