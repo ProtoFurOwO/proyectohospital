@@ -646,11 +646,12 @@ async def crear_expediente(expediente: ExpedienteCreate):
     if pool:
         try:
             async with pool.acquire() as conn:
-                await conn.execute("""
+                inserted_id = await conn.fetchval("""
                     INSERT INTO historias_clinicas
                         (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio,
                          destino_paciente, paciente_id_cita, procedencia, cita_id)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    RETURNING id
                 """,
                     nuevo.numero_expediente_clinico,
                     nuevo.nombre,
@@ -663,6 +664,8 @@ async def crear_expediente(expediente: ExpedienteCreate):
                     nuevo.procedencia or "",
                     nuevo.cita_id
                 )
+                if inserted_id:
+                    nuevo.id = inserted_id
         except Exception as e:
             print(f"[WARN] No se pudo persistir en PostgreSQL: {e}")
 
@@ -670,40 +673,134 @@ async def crear_expediente(expediente: ExpedienteCreate):
 
     return nuevo
 
+@app.put("/expedientes/{expediente_id}")
+async def actualizar_expediente(expediente_id: int, expediente: Expediente):
+    """Actualiza un expediente existente en memoria y en PostgreSQL"""
+    
+    # Validar que si cambia el numero de expediente o paciente_id, no choque con otro
+    if pool:
+        async with pool.acquire() as conn:
+            existing_num = await conn.fetchrow(
+                "SELECT id FROM historias_clinicas WHERE num_expediente = $1 AND id != $2",
+                expediente.numero_expediente_clinico, expediente_id
+            )
+            if existing_num:
+                raise HTTPException(status_code=409, detail="Ya existe otro expediente con ese numero")
+                
+            existing_paciente = await conn.fetchrow(
+                "SELECT id FROM historias_clinicas WHERE paciente_id_cita = $1 AND id != $2",
+                expediente.paciente_id, expediente_id
+            )
+            if existing_paciente:
+                raise HTTPException(status_code=409, detail="Ya existe otro expediente para ese paciente_id")
+
+    encontrado = None
+    for idx, exp in enumerate(expedientes_db):
+        if exp.id == expediente_id:
+            # Mantener estudios originales si no se envian nuevos
+            estudios_existentes = exp.estudios
+            nuevo_exp = expediente.copy()
+            nuevo_exp.id = expediente_id
+            if not nuevo_exp.estudios:
+                nuevo_exp.estudios = estudios_existentes
+                
+            es_alta = (nuevo_exp.destino_paciente or "").lower() == "alta"
+            if es_alta:
+                nuevo_exp.cirugia_programada = False
+                nuevo_exp.estado_cirugia = "no_requerida"
+                nuevo_exp.responsable_cirugia = "N/A - Alta sin cirugia"
+                nuevo_exp.responsable_anestesia = "N/A"
+                nuevo_exp.tiene_preproceso = True
+            else:
+                nuevo_exp.tiene_preproceso = calcular_preproceso(nuevo_exp.estudios)
+                
+            expedientes_db[idx] = nuevo_exp
+            encontrado = nuevo_exp
+            break
+
+    # Si no esta en memoria pero si en base de datos, lo tratamos como "encontrado" para actualizar DB
+    # En un caso ideal deberiamos recargar de DB a memoria
+    es_alta = (expediente.destino_paciente or "").lower() == "alta"
+    
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                result = await conn.execute("""
+                    UPDATE historias_clinicas
+                    SET num_expediente = $1, nombre_paciente = $2, sexo = $3, edad = $4, 
+                        dx_preoperatorio = $5, dx_postoperatorio = $6, destino_paciente = $7, 
+                        paciente_id_cita = $8, procedencia = $9, cita_id = $10
+                    WHERE id = $11 OR num_expediente = $12
+                """,
+                    expediente.numero_expediente_clinico,
+                    expediente.nombre,
+                    expediente.sexo,
+                    expediente.edad_anos or 0,
+                    expediente.diagnostico_preoperatorio or "",
+                    expediente.diagnostico_postoperatorio or "",
+                    expediente.destino_paciente or "Hospitalizacion",
+                    expediente.paciente_id,
+                    expediente.procedencia or "",
+                    expediente.cita_id,
+                    expediente_id,
+                    expediente.numero_expediente_clinico
+                )
+                if result == "UPDATE 0" and not encontrado:
+                    raise HTTPException(status_code=404, detail="Expediente no encontrado en la base de datos")
+        except Exception as e:
+            if not isinstance(e, HTTPException):
+                print(f"[WARN] No se pudo actualizar en PostgreSQL: {e}")
+            else:
+                raise
+
+    emit_log_bg("INFO", "EXPEDIENTES", "UPDATE", "EXPEDIENTE", f"{expediente.nombre}_{expediente.numero_expediente_clinico}")
+    
+    # Devolver el objeto actualizado. Si no estaba en memoria, devolvemos el payload con el ID
+    if encontrado:
+        return encontrado
+        
+    expediente.id = expediente_id
+    if es_alta:
+        expediente.cirugia_programada = False
+        expediente.estado_cirugia = "no_requerida"
+    return expediente
+
 @app.delete("/expedientes/{expediente_id}")
 async def eliminar_expediente(expediente_id: int):
     """Elimina un expediente de la base de datos y de memoria"""
+    
+    # Eliminar de PostgreSQL primero para asegurarnos
+    pg_deleted = False
+    numero_clinico = None
+    pool = await get_pool()
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                # Obtener el numero antes de borrar para el log y para borrar en RAM
+                row = await conn.fetchrow("SELECT num_expediente FROM historias_clinicas WHERE id = $1", expediente_id)
+                if row:
+                    numero_clinico = row["num_expediente"]
+                    
+                result = await conn.execute("DELETE FROM historias_clinicas WHERE id = $1", expediente_id)
+                if result and result != "DELETE 0":
+                    pg_deleted = True
+        except Exception as e:
+            print(f"[WARN] No se pudo eliminar de PostgreSQL: {e}")
+
+    # Eliminar de memoria
     encontrado = None
     for exp in expedientes_db:
-        if exp.id == expediente_id:
+        if exp.id == expediente_id or (numero_clinico and exp.numero_expediente_clinico == numero_clinico):
             encontrado = exp
             break
 
     if encontrado:
         expedientes_db.remove(encontrado)
-
-        # Eliminar de PostgreSQL tambien
-        pool = await get_pool()
-        if pool:
-            try:
-                async with pool.acquire() as conn:
-                    await conn.execute(
-                        "DELETE FROM historias_clinicas WHERE num_expediente = $1",
-                        encontrado.numero_expediente_clinico
-                    )
-            except Exception as e:
-                print(f"[WARN] No se pudo eliminar de PostgreSQL: {e}")
-
         emit_log_bg("INFO", "EXPEDIENTES", "DELETE", "EXPEDIENTE", f"{encontrado.nombre}_{encontrado.numero_expediente_clinico}")
         return {"success": True, "message": f"Expediente {encontrado.numero_expediente_clinico} eliminado"}
 
-    # Si no esta en memoria, intentar eliminar de PostgreSQL por ID
-    pool = await get_pool()
-    if pool:
-        async with pool.acquire() as conn:
-            result = await conn.execute("DELETE FROM historias_clinicas WHERE id = $1", expediente_id)
-            if result and result != "DELETE 0":
-                return {"success": True, "message": f"Expediente #{expediente_id} eliminado de la base de datos"}
+    if pg_deleted:
+        return {"success": True, "message": f"Expediente #{expediente_id} eliminado de la base de datos"}
 
     raise HTTPException(status_code=404, detail="Expediente no encontrado")
 
