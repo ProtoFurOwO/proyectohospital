@@ -678,6 +678,8 @@ async def crear_expediente(expediente: ExpedienteCreate):
 async def actualizar_expediente(expediente_id: int, expediente: ExpedienteCreate):
     """Actualiza un expediente existente en memoria y en PostgreSQL"""
     
+    pool = await get_pool()
+    
     # Validar que si cambia el numero de expediente o paciente_id, no choque con otro
     if pool:
         async with pool.acquire() as conn:
