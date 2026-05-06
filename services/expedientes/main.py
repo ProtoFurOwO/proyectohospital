@@ -662,6 +662,43 @@ async def crear_expediente(expediente: ExpedienteCreate):
 
     return nuevo
 
+@app.delete("/expedientes/{expediente_id}")
+async def eliminar_expediente(expediente_id: int):
+    """Elimina un expediente de la base de datos y de memoria"""
+    encontrado = None
+    for exp in expedientes_db:
+        if exp.id == expediente_id:
+            encontrado = exp
+            break
+
+    if encontrado:
+        expedientes_db.remove(encontrado)
+
+        # Eliminar de PostgreSQL tambien
+        pool = await get_pool()
+        if pool:
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "DELETE FROM historias_clinicas WHERE num_expediente = $1",
+                        encontrado.numero_expediente_clinico
+                    )
+            except Exception as e:
+                print(f"[WARN] No se pudo eliminar de PostgreSQL: {e}")
+
+        emit_log_bg("INFO", "EXPEDIENTES", "DELETE", "EXPEDIENTE", f"{encontrado.nombre}_{encontrado.numero_expediente_clinico}")
+        return {"success": True, "message": f"Expediente {encontrado.numero_expediente_clinico} eliminado"}
+
+    # Si no esta en memoria, intentar eliminar de PostgreSQL por ID
+    pool = await get_pool()
+    if pool:
+        async with pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM historias_clinicas WHERE id = $1", expediente_id)
+            if result and result != "DELETE 0":
+                return {"success": True, "message": f"Expediente #{expediente_id} eliminado de la base de datos"}
+
+    raise HTTPException(status_code=404, detail="Expediente no encontrado")
+
 @app.post("/expedientes/{expediente_id}/agregar-estudio")
 async def agregar_estudio(expediente_id: int, estudio: Estudio):
     """Agrega un estudio al expediente"""
