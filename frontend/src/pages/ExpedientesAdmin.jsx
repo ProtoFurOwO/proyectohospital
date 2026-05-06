@@ -134,7 +134,16 @@ const buildStudyForms = (expediente) => {
   return forms
 }
 
+const esDestinoAlta = (expediente) => {
+  const destino = String(expediente?.destino_paciente || '').toLowerCase()
+  return destino === 'alta'
+}
+
 const getSemaforoExpediente = (expediente) => {
+  if (esDestinoAlta(expediente)) {
+    return { label: 'Alta medica - sin cirugia requerida', color: '#14b8a6' }
+  }
+
   const estados = ESTUDIOS_REQUERIDOS.map((tipo) => normalizeStudyState(getStudyByTipo(expediente, tipo)))
   const validados = estados.filter((estado) => estado === 'validado').length
   const rechazados = estados.filter((estado) => estado === 'rechazado').length
@@ -1087,6 +1096,7 @@ export default function ExpedientesAdmin() {
               const validacion = validaciones[item.numero_expediente_clinico]
               const puedeOperar = validacion?.puede_operar
               const semaforo = getSemaforoExpediente(item)
+              const esAlta = esDestinoAlta(item)
 
               return (
                 <div
@@ -1107,15 +1117,23 @@ export default function ExpedientesAdmin() {
                       <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
                         Dx: {item.diagnostico_preoperatorio || 'Sin diagnostico'}
                       </div>
-                      <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
-                        Cirujano: {item.responsable_cirugia || 'Pendiente'} | Anestesia: {item.responsable_anestesia || 'Pendiente'}
-                      </div>
-                      <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
-                        Turno: {formatTurno(item.turno_asignado)} | Hora: {item.hora_inicio_cirugia || '--:--'}-{item.hora_fin_cirugia || '--:--'} | Quirofano: {item.quirofano_id ? `Q${item.quirofano_id}` : 'Pendiente'}
-                      </div>
-                      <div style={{ color: '#5e7791', fontSize: '0.8rem' }}>
-                        Estado cirugia: {item.estado_cirugia || 'pendiente'}
-                      </div>
+                      {esAlta ? (
+                        <div style={{ color: '#14b8a6', fontSize: '0.85rem', fontWeight: 600 }}>
+                          Destino: Alta medica | Cirugia no requerida
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
+                            Cirujano: {item.responsable_cirugia || 'Pendiente'} | Anestesia: {item.responsable_anestesia || 'Pendiente'}
+                          </div>
+                          <div style={{ color: '#5e7791', fontSize: '0.85rem' }}>
+                            Turno: {formatTurno(item.turno_asignado)} | Hora: {item.hora_inicio_cirugia || '--:--'}-{item.hora_fin_cirugia || '--:--'} | Quirofano: {item.quirofano_id ? `Q${item.quirofano_id}` : 'Pendiente'}
+                          </div>
+                          <div style={{ color: '#5e7791', fontSize: '0.8rem' }}>
+                            Estado cirugia: {item.estado_cirugia || 'pendiente'}
+                          </div>
+                        </>
+                      )}
                       <div style={{ color: semaforo.color, fontSize: '0.8rem', fontWeight: 700, marginTop: '0.35rem' }}>
                         {semaforo.label}
                       </div>
@@ -1129,11 +1147,13 @@ export default function ExpedientesAdmin() {
                         Editar
                       </button>
 
-                      <button className="btn btn-primary" onClick={() => validarExpediente(item.numero_expediente_clinico)}>
-                        Validar preop
-                      </button>
+                      {!esAlta && (
+                        <button className="btn btn-primary" onClick={() => validarExpediente(item.numero_expediente_clinico)}>
+                          Validar preop
+                        </button>
+                      )}
 
-                      {item.diagnostico_postoperatorio !== 'EN CIRUGIA' && (
+                      {!esAlta && item.diagnostico_postoperatorio !== 'EN CIRUGIA' && (
                         <button className="btn btn-success" onClick={() => mandarACirugia(item)}>
                           Enviar a quirofano
                         </button>
@@ -1150,7 +1170,19 @@ export default function ExpedientesAdmin() {
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.55rem' }}>
-                    {ESTUDIOS_REQUERIDOS.map((tipo) => {
+                    {esAlta ? (
+                      <span style={{
+                        background: '#14b8a622',
+                        border: '1px solid #14b8a6',
+                        color: '#0d6e5f',
+                        borderRadius: '999px',
+                        padding: '0.18rem 0.75rem',
+                        fontSize: '0.74rem',
+                        fontWeight: 600
+                      }}>
+                        Paciente dado de alta - no requiere estudios preoperatorios
+                      </span>
+                    ) : ESTUDIOS_REQUERIDOS.map((tipo) => {
                       const estado = normalizeStudyState(getStudyByTipo(item, tipo))
                       return (
                         <span
