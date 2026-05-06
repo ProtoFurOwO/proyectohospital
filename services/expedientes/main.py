@@ -446,6 +446,7 @@ async def get_expedientes():
             "destino_paciente": data.get("destino_paciente") or "Hospitalizacion",
             "procedencia": data.get("procedencia") or "N/A",
             "cita_id": data.get("cita_id"),
+            "estado_cirugia": "enviada_a_quirofano" if data.get("dx_postoperatorio") == "EN CIRUGIA" else ("no_requerida" if (data.get("destino_paciente") or "").lower() == "alta" else "pendiente"),
             "tiene_preproceso": True,
             "estudios": [],
             "alergias": []
@@ -879,29 +880,76 @@ async def actualizar_estudio(expediente_id: int, tipo_estudio: str, payload: Est
 
 @app.post("/expedientes/{expediente_id}/enviar-cirugia", response_model=Expediente)
 async def enviar_expediente_a_cirugia(expediente_id: int):
-    """Marca el expediente como listo y enviado al quirofano asignado."""
+    """Marca el expediente como listo, lo guarda en DB y lo envia al quirofano asignado."""
+    encontrado = None
     for exp in expedientes_db:
-        if exp.id != expediente_id:
-            continue
+        if exp.id == expediente_id:
+            encontrado = exp
+            break
+            
+    if not encontrado:
+        raise HTTPException(status_code=404, detail="Expediente no encontrado")
+        
+    exp = encontrado
 
-        if not exp.tiene_preproceso:
-            raise HTTPException(status_code=409, detail="El expediente no tiene preproceso validado")
-        if not exp.quirofano_id:
-            raise HTTPException(status_code=409, detail="El expediente no tiene quirofano asignado")
-        if not exp.fecha_cirugia or not exp.hora_inicio_cirugia:
-            raise HTTPException(status_code=409, detail="El expediente no tiene fecha/hora de cirugia asignadas")
-        if not exp.responsable_cirugia or not exp.responsable_anestesia:
-            raise HTTPException(status_code=409, detail="El expediente no tiene medico/anestesia asignados")
+    if not exp.tiene_preproceso:
+        raise HTTPException(status_code=409, detail="El expediente no tiene preproceso validado")
+    if not exp.quirofano_id:
+        raise HTTPException(status_code=409, detail="El expediente no tiene quirofano asignado")
+    if not exp.fecha_cirugia or not exp.hora_inicio_cirugia:
+        raise HTTPException(status_code=409, detail="El expediente no tiene fecha/hora de cirugia asignadas")
+    if not exp.responsable_cirugia or not exp.responsable_anestesia:
+        raise HTTPException(status_code=409, detail="El expediente no tiene medico/anestesia asignados")
 
-        exp.estado_cirugia = "enviada_a_quirofano"
-        exp.enviado_a_cirugia_en = date.today().isoformat()
-        exp.destino_paciente = "Quirofano"
+    # 1. Avisar al microservicio de quirofanos en Go
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{QUIROFANOS_SERVICE_URL}/quirofanos/{exp.quirofano_id}/iniciar",
+                json={
+                    "medico_id": 0, # Placeholder
+                    "medico_nombre": exp.responsable_cirugia,
+                    "paciente_nombre": exp.nombre,
+                    "expediente_id": exp.id,
+                    "anestesiologo_nombre": exp.responsable_anestesia,
+                    "tipo_cirugia": exp.diagnostico_preoperatorio or "Cirugia",
+                    "especialidad": exp.especialidad_quirurgica or "General",
+                    "es_urgencia": (exp.tipo_cirugia_urgencia == "Urgencia")
+                }
+            )
+            if resp.status_code >= 400:
+                print(f"[WARN] Quirofanos API error: {resp.text}")
+                # Podriamos fallar aqui, pero para evitar que se atore, solo avisamos
+    except Exception as e:
+        print(f"[ERROR] No se pudo contactar a Quirofanos: {e}")
 
-        emit_log_bg("WARN", "EXPEDIENTES", "ASSIGN", "QUIROFANO", f"Q{exp.quirofano_id}_{exp.nombre}")
+    # 2. Actualizar estado en RAM
+    exp.estado_cirugia = "enviada_a_quirofano"
+    exp.diagnostico_postoperatorio = "EN CIRUGIA"
+    exp.enviado_a_cirugia_en = date.today().isoformat()
+    exp.destino_paciente = "Quirofano"
 
-        return exp
+    # 3. Persistir en PostgreSQL para que sobreviva a GET /expedientes
+    pool = await get_pool()
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE historias_clinicas
+                    SET dx_postoperatorio = $1, destino_paciente = $2
+                    WHERE id = $3 OR num_expediente = $4
+                """,
+                    exp.diagnostico_postoperatorio,
+                    exp.destino_paciente,
+                    exp.id,
+                    exp.numero_expediente_clinico
+                )
+        except Exception as e:
+            print(f"[WARN] No se pudo actualizar estado en PostgreSQL: {e}")
 
-    raise HTTPException(status_code=404, detail="Expediente no encontrado")
+    emit_log_bg("WARN", "EXPEDIENTES", "ASSIGN", "QUIROFANO", f"Q{exp.quirofano_id}_{exp.nombre}")
+
+    return exp
 
 @app.get("/expedientes/estadisticas/resumen")
 async def estadisticas():
