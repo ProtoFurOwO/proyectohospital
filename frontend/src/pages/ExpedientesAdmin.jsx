@@ -490,10 +490,20 @@ export default function ExpedientesAdmin() {
       return
     }
 
-    if (!form.paciente_id || !form.nombre || !form.division_quirurgica) {
+    if (!form.paciente_id || !form.nombre) {
       setResultado({
         success: false,
-        message: 'Selecciona paciente, nombre y tipo de cirugia.'
+        message: 'Selecciona paciente y nombre.'
+      })
+      return
+    }
+
+    // Division quirurgica solo es obligatoria si NO es Alta
+    const esFormAlta = form.destino_paciente === 'Alta'
+    if (!esFormAlta && !form.division_quirurgica) {
+      setResultado({
+        success: false,
+        message: 'Selecciona tipo de cirugia (division quirurgica).'
       })
       return
     }
@@ -521,7 +531,14 @@ export default function ExpedientesAdmin() {
       }
 
       if (!editandoId) {
-        await sincronizarCitaQuirurgica(payload)
+        if (esFormAlta && payload.cita_id) {
+          // Para Alta: cancelar/completar la cita (el paciente no va a cirugia)
+          try {
+            await fetch(`${API_CITAS}/citas/${payload.cita_id}/cancelar`, { method: 'POST' })
+          } catch (_e) { /* no bloqueante */ }
+        } else {
+          await sincronizarCitaQuirurgica(payload)
+        }
       }
 
       setResultado({

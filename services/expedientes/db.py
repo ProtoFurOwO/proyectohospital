@@ -29,6 +29,17 @@ async def init_db():
                         UNIQUE(expediente_id, tipo)
                     )
                 """)
+                # Migraciones: agregar columnas si no existen
+                for col, tipo in [
+                    ("destino_paciente", "VARCHAR(100)"),
+                    ("paciente_id_cita", "INTEGER"),
+                    ("procedencia", "VARCHAR(100)"),
+                    ("cita_id", "INTEGER"),
+                ]:
+                    try:
+                        await conn.execute(f"ALTER TABLE historias_clinicas ADD COLUMN IF NOT EXISTS {col} {tipo}")
+                    except Exception:
+                        pass
             break
         except Exception as e:
             print(f"Esperando a la base de datos PostgreSQL... {e}")

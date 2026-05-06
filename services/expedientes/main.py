@@ -435,7 +435,7 @@ async def get_expedientes():
         # Adaptar el esquema SQL al frontend React
         resultado.append({
             "id": data["id"],
-            "paciente_id": data["id"],
+            "paciente_id": data.get("paciente_id_cita") or data["id"],
             "numero_expediente_clinico": data["num_expediente"],
             "nombre": data["nombre_paciente"],
             "sexo": data["sexo"],
@@ -443,6 +443,9 @@ async def get_expedientes():
             "fecha_nacimiento": "N/A",
             "diagnostico_preoperatorio": data["dx_preoperatorio"],
             "diagnostico_postoperatorio": data["dx_postoperatorio"],
+            "destino_paciente": data.get("destino_paciente") or "Hospitalizacion",
+            "procedencia": data.get("procedencia") or "N/A",
+            "cita_id": data.get("cita_id"),
             "tiene_preproceso": True,
             "estudios": [],
             "alergias": []
@@ -645,15 +648,20 @@ async def crear_expediente(expediente: ExpedienteCreate):
             async with pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO historias_clinicas
-                        (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                        (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio,
+                         destino_paciente, paciente_id_cita, procedencia, cita_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """,
                     nuevo.numero_expediente_clinico,
                     nuevo.nombre,
                     nuevo.sexo,
                     nuevo.edad_anos or 0,
                     nuevo.diagnostico_preoperatorio or "",
-                    nuevo.diagnostico_postoperatorio or ""
+                    nuevo.diagnostico_postoperatorio or "",
+                    nuevo.destino_paciente or "Hospitalizacion",
+                    nuevo.paciente_id,
+                    nuevo.procedencia or "",
+                    nuevo.cita_id
                 )
         except Exception as e:
             print(f"[WARN] No se pudo persistir en PostgreSQL: {e}")
