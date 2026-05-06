@@ -572,11 +572,30 @@ async def iniciar_cirugia_manual(expediente_id: int):
 @app.post("/expedientes", response_model=Expediente)
 async def crear_expediente(expediente: ExpedienteCreate):
     """Alta administrativa de expediente para flujo de citas"""
+    pool = await get_pool()
+
+    # --- Validacion de duplicados contra PostgreSQL (fuente de verdad) ---
+    if pool:
+        async with pool.acquire() as conn:
+            existing = await conn.fetchrow(
+                "SELECT id FROM historias_clinicas WHERE num_expediente = $1",
+                expediente.numero_expediente_clinico
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Ya existe un expediente con ese numero")
+
+    # --- Validacion tambien en memoria por si acaso ---
     for exp in expedientes_db:
         if exp.numero_expediente_clinico.upper() == expediente.numero_expediente_clinico.upper():
             raise HTTPException(status_code=409, detail="Ya existe un expediente con ese numero")
         if exp.paciente_id == expediente.paciente_id:
             raise HTTPException(status_code=409, detail="Ya existe un expediente para ese paciente_id")
+
+    # --- Si destino es Alta, no requiere cirugia ni cirujano ---
+    es_alta = (expediente.destino_paciente or "").lower() == "alta"
+    if es_alta:
+        expediente.cirugia_programada = False
+        expediente.estado_cirugia = "no_requerida"
 
     estudios_con_id = preparar_estudios_requeridos(expediente.estudios)
 
@@ -601,9 +620,9 @@ async def crear_expediente(expediente: ExpedienteCreate):
         tipo_cirugia_complejidad=expediente.tipo_cirugia_complejidad,
         tipo_cirugia_urgencia=expediente.tipo_cirugia_urgencia,
         division_quirurgica=expediente.division_quirurgica,
-        responsable_cirugia=expediente.responsable_cirugia,
+        responsable_cirugia=expediente.responsable_cirugia if not es_alta else "N/A - Alta sin cirugia",
         especialidad_quirurgica=expediente.especialidad_quirurgica,
-        responsable_anestesia=expediente.responsable_anestesia,
+        responsable_anestesia=expediente.responsable_anestesia if not es_alta else "N/A",
         responsable_informacion=expediente.responsable_informacion,
         transfusion_evento=expediente.transfusion_evento,
         observaciones=expediente.observaciones,
@@ -615,10 +634,29 @@ async def crear_expediente(expediente: ExpedienteCreate):
         tipo_sangre=expediente.tipo_sangre,
         alergias=expediente.alergias,
         estudios=estudios_con_id,
-        tiene_preproceso=calcular_preproceso(estudios_con_id)
+        tiene_preproceso=True if es_alta else calcular_preproceso(estudios_con_id)
     )
 
     expedientes_db.append(nuevo)
+
+    # --- Persistir en PostgreSQL ---
+    if pool:
+        try:
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO historias_clinicas
+                        (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                    nuevo.numero_expediente_clinico,
+                    nuevo.nombre,
+                    nuevo.sexo,
+                    nuevo.edad_anos or 0,
+                    nuevo.diagnostico_preoperatorio or "",
+                    nuevo.diagnostico_postoperatorio or ""
+                )
+        except Exception as e:
+            print(f"[WARN] No se pudo persistir en PostgreSQL: {e}")
 
     emit_log_bg("INFO", "EXPEDIENTES", "CREATE", "EXPEDIENTE", f"{nuevo.nombre}_{nuevo.numero_expediente_clinico}")
 
