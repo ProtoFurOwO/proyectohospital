@@ -446,6 +446,13 @@ async def get_expedientes():
             "destino_paciente": data.get("destino_paciente") or "Hospitalizacion",
             "procedencia": data.get("procedencia") or "N/A",
             "cita_id": data.get("cita_id"),
+            "responsable_cirugia": data.get("responsable_cirugia"),
+            "responsable_anestesia": data.get("responsable_anestesia"),
+            "turno_asignado": data.get("turno_asignado"),
+            "hora_inicio_cirugia": data.get("hora_inicio_cirugia"),
+            "hora_fin_cirugia": data.get("hora_fin_cirugia"),
+            "quirofano_id": data.get("quirofano_id"),
+            "division_quirurgica": data.get("division_quirurgica"),
             "estado_cirugia": "enviada_a_quirofano" if data.get("dx_postoperatorio") == "EN CIRUGIA" else ("no_requerida" if (data.get("destino_paciente") or "").lower() == "alta" else "pendiente"),
             "tiene_preproceso": True,
             "estudios": [],
@@ -650,8 +657,10 @@ async def crear_expediente(expediente: ExpedienteCreate):
                 inserted_id = await conn.fetchval("""
                     INSERT INTO historias_clinicas
                         (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio,
-                         destino_paciente, paciente_id_cita, procedencia, cita_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                         destino_paciente, paciente_id_cita, procedencia, cita_id,
+                         responsable_cirugia, responsable_anestesia, turno_asignado,
+                         hora_inicio_cirugia, hora_fin_cirugia, quirofano_id, division_quirurgica)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
                     RETURNING id
                 """,
                     nuevo.numero_expediente_clinico,
@@ -663,7 +672,14 @@ async def crear_expediente(expediente: ExpedienteCreate):
                     nuevo.destino_paciente or "Hospitalizacion",
                     nuevo.paciente_id,
                     nuevo.procedencia or "",
-                    nuevo.cita_id
+                    nuevo.cita_id,
+                    nuevo.responsable_cirugia,
+                    nuevo.responsable_anestesia,
+                    nuevo.turno_asignado,
+                    nuevo.hora_inicio_cirugia,
+                    nuevo.hora_fin_cirugia,
+                    nuevo.quirofano_id,
+                    nuevo.division_quirurgica
                 )
                 if inserted_id:
                     nuevo.id = inserted_id
@@ -736,8 +752,10 @@ async def actualizar_expediente(expediente_id: int, expediente: ExpedienteCreate
                     UPDATE historias_clinicas
                     SET num_expediente = $1, nombre_paciente = $2, sexo = $3, edad = $4, 
                         dx_preoperatorio = $5, dx_postoperatorio = $6, destino_paciente = $7, 
-                        paciente_id_cita = $8, procedencia = $9, cita_id = $10
-                    WHERE id = $11 OR num_expediente = $12
+                        paciente_id_cita = $8, procedencia = $9, cita_id = $10,
+                        responsable_cirugia = $11, responsable_anestesia = $12, turno_asignado = $13,
+                        hora_inicio_cirugia = $14, hora_fin_cirugia = $15, quirofano_id = $16, division_quirurgica = $17
+                    WHERE id = $18 OR num_expediente = $19
                 """,
                     expediente.numero_expediente_clinico,
                     expediente.nombre,
@@ -749,6 +767,13 @@ async def actualizar_expediente(expediente_id: int, expediente: ExpedienteCreate
                     expediente.paciente_id,
                     expediente.procedencia or "",
                     expediente.cita_id,
+                    expediente.responsable_cirugia,
+                    expediente.responsable_anestesia,
+                    expediente.turno_asignado,
+                    expediente.hora_inicio_cirugia,
+                    expediente.hora_fin_cirugia,
+                    expediente.quirofano_id,
+                    expediente.division_quirurgica,
                     expediente_id,
                     expediente.numero_expediente_clinico
                 )

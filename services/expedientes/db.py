@@ -35,6 +35,13 @@ async def init_db():
                     ("paciente_id_cita", "INTEGER"),
                     ("procedencia", "VARCHAR(100)"),
                     ("cita_id", "INTEGER"),
+                    ("responsable_cirugia", "VARCHAR(255)"),
+                    ("responsable_anestesia", "VARCHAR(255)"),
+                    ("turno_asignado", "VARCHAR(50)"),
+                    ("hora_inicio_cirugia", "VARCHAR(20)"),
+                    ("hora_fin_cirugia", "VARCHAR(20)"),
+                    ("quirofano_id", "INTEGER"),
+                    ("division_quirurgica", "VARCHAR(100)"),
                 ]:
                     try:
                         await conn.execute(f"ALTER TABLE historias_clinicas ADD COLUMN IF NOT EXISTS {col} {tipo}")
