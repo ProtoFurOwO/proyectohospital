@@ -675,7 +675,7 @@ async def crear_expediente(expediente: ExpedienteCreate):
     return nuevo
 
 @app.put("/expedientes/{expediente_id}")
-async def actualizar_expediente(expediente_id: int, expediente: Expediente):
+async def actualizar_expediente(expediente_id: int, expediente: ExpedienteCreate):
     """Actualiza un expediente existente en memoria y en PostgreSQL"""
     
     # Validar que si cambia el numero de expediente o paciente_id, no choque con otro
@@ -700,8 +700,12 @@ async def actualizar_expediente(expediente_id: int, expediente: Expediente):
         if exp.id == expediente_id:
             # Mantener estudios originales si no se envian nuevos
             estudios_existentes = exp.estudios
-            nuevo_exp = expediente.copy()
-            nuevo_exp.id = expediente_id
+            # Convertimos ExpedienteCreate a Expediente
+            exp_dict = expediente.dict()
+            exp_dict["id"] = expediente_id
+            exp_dict["tiene_preproceso"] = exp.tiene_preproceso
+            
+            nuevo_exp = Expediente(**exp_dict)
             if not nuevo_exp.estudios:
                 nuevo_exp.estudios = estudios_existentes
                 
@@ -760,11 +764,16 @@ async def actualizar_expediente(expediente_id: int, expediente: Expediente):
     if encontrado:
         return encontrado
         
-    expediente.id = expediente_id
+    exp_dict = expediente.dict()
+    exp_dict["id"] = expediente_id
+    exp_dict["tiene_preproceso"] = False
+    
     if es_alta:
-        expediente.cirugia_programada = False
-        expediente.estado_cirugia = "no_requerida"
-    return expediente
+        exp_dict["cirugia_programada"] = False
+        exp_dict["estado_cirugia"] = "no_requerida"
+        exp_dict["tiene_preproceso"] = True
+        
+    return Expediente(**exp_dict)
 
 @app.delete("/expedientes/{expediente_id}")
 async def eliminar_expediente(expediente_id: int):

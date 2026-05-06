@@ -526,7 +526,11 @@ export default function ExpedientesAdmin() {
 
       const data = await response.json()
       if (!response.ok) {
-        setResultado({ success: false, message: data.detail || `No se pudo ${editandoId ? 'actualizar' : 'crear'} el expediente.` })
+        let errorMsg = data.detail
+        if (Array.isArray(data.detail)) {
+          errorMsg = data.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join(', ')
+        }
+        setResultado({ success: false, message: errorMsg || `No se pudo ${editandoId ? 'actualizar' : 'crear'} el expediente.` })
         return
       }
 
