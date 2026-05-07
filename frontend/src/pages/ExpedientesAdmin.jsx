@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { API } from '../config'
+import { generarPDFExpediente } from '../utils/generarPDFExpediente'
 const API_EXPEDIENTES = API.expedientes
 const API_CITAS = API.citas
 const API_PERSONAL = API.personal
@@ -1179,6 +1180,15 @@ export default function ExpedientesAdmin() {
                           Enviar a quirofano
                         </button>
                       )}
+
+                      <button
+                        className="btn btn-secondary"
+                        style={{ background: '#6c5ce7', color: '#fff', border: 'none' }}
+                        onClick={() => generarPDFExpediente(item)}
+                        title="Descargar reporte PDF"
+                      >
+                        📄 PDF
+                      </button>
                       
                       <button 
                         className="btn btn-danger" 
