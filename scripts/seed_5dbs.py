@@ -113,6 +113,9 @@ async def main():
         for row in reader:
             registros += 1
             
+            edad_str = row.get("Edad (años)", "0")
+            edad = int(edad_str) if edad_str.isdigit() else 0
+            
             # --- 1. MySQL (Citas) ---
             async with mysql_pool.acquire() as conn:
                 async with conn.cursor() as cur:
@@ -143,8 +146,6 @@ async def main():
                     await conn.commit()
 
             # --- 2. PostgreSQL (Expedientes) ---
-            edad_str = row.get("Edad (años)", "0")
-            edad = int(edad_str) if edad_str.isdigit() else 0
             async with pg_pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO historias_clinicas (num_expediente, nombre_paciente, sexo, edad, dx_preoperatorio, dx_postoperatorio)
