@@ -237,7 +237,7 @@ async def get_citas(
         
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute("SELECT * FROM citas_legacy LIMIT 50")
+            await cur.execute("SELECT * FROM citas_legacy ORDER BY id DESC LIMIT 100")
             result = await cur.fetchall()
             
     resultado = []

@@ -427,7 +427,7 @@ async def get_expedientes():
         raise HTTPException(status_code=500, detail="Database not connected")
         
     async with pool.acquire() as conn:
-        records = await conn.fetch("SELECT * FROM historias_clinicas LIMIT 50")
+        records = await conn.fetch("SELECT * FROM historias_clinicas ORDER BY id DESC LIMIT 100")
         
     resultado = []
     for record in records:
