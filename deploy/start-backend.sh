@@ -34,10 +34,11 @@ PIDS=()
 
 # ── 2. Microservicios Python ──
 # Escuchan en 0.0.0.0 para recibir tráfico de la VPC (Nginx) 
-# pero el firewall (UFW) bloqueará el acceso externo público.
+# Usamos --root-path para que Swagger/Docs funcione tras el proxy de Nginx
 echo "[8001] Iniciando Citas (Python/FastAPI)..."
 python3 -m uvicorn services.citas.main:app \
   --host 0.0.0.0 --port 8001 \
+  --root-path /svc/citas \
   >> "$LOG_DIR/citas.log" 2>&1 &
 PIDS+=($!)
 
@@ -46,6 +47,7 @@ sleep 1
 echo "[8002] Iniciando Expedientes (Python/FastAPI)..."
 python3 -m uvicorn services.expedientes.main:app \
   --host 0.0.0.0 --port 8002 \
+  --root-path /svc/expedientes \
   >> "$LOG_DIR/expedientes.log" 2>&1 &
 PIDS+=($!)
 
@@ -54,6 +56,7 @@ sleep 1
 echo "[8005] Iniciando Personal (Python/FastAPI)..."
 python3 -m uvicorn services.personal.main:app \
   --host 0.0.0.0 --port 8005 \
+  --root-path /svc/personal \
   >> "$LOG_DIR/personal.log" 2>&1 &
 PIDS+=($!)
 
