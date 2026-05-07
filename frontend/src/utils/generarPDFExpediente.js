@@ -411,7 +411,7 @@ export function generarPDFExpediente(expediente) {
     y = drawDataRow(doc, 'Observaciones', expediente.observaciones, y, { labelWidth: 42 })
   }
 
-  y += 3
+  y += 1
 
   // ── ESTUDIOS PREOPERATORIOS ──
   if (!esAlta) {
@@ -455,8 +455,8 @@ export function generarPDFExpediente(expediente) {
   }
 
   // ── FIRMAS ──
-  y += 10
-  if (y > PAGE.height - 50) {
+  y += 5
+  if (y > PAGE.height - 35) {
     doc.addPage()
     y = PAGE.marginTop + 10
   }

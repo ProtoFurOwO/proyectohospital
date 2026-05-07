@@ -24,7 +24,10 @@ async def setup_mysql():
                     complejidad VARCHAR(255),
                     urgencia VARCHAR(255),
                     paciente_nombre VARCHAR(255),
-                    numero_expediente_clinico VARCHAR(255)
+                    numero_expediente_clinico VARCHAR(255),
+                    sexo VARCHAR(50),
+                    edad INT,
+                    fecha_nacimiento VARCHAR(50)
                 );
             """)
             await conn.commit()
@@ -120,16 +123,22 @@ async def main():
                             complejidad,
                             urgencia,
                             paciente_nombre,
-                            numero_expediente_clinico
+                            numero_expediente_clinico,
+                            sexo,
+                            edad,
+                            fecha_nacimiento
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         row.get("Fecha de solicitud de intervención quirúrgica", ""),
                         row.get("Cirugía programada", ""),
                         row.get("Tipo de cirugía por la complejidad del evento.", ""),
                         row.get("Tipo de cirugía por la urgencia o emergencia de la intervención", ""),
                         row.get("Nombre del paciente", ""),
-                        row.get("Número de expediente clínico", "")
+                        row.get("Número de expediente clínico", ""),
+                        row.get("Sexo", ""),
+                        edad,
+                        ""
                     ))
                     await conn.commit()
 

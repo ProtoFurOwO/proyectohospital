@@ -11,6 +11,9 @@ const buildInitialForm = () => ({
   numero_expediente_clinico: '',
   paciente_id: '',
   paciente_nombre: '',
+  sexo: 'Femenino',
+  edad: '',
+  fecha_nacimiento: '',
   fecha_cita: todayISO(),
   hora_cita: '08:00',
   tipo_cirugia: 'Valoracion inicial'
@@ -128,6 +131,9 @@ function CitasAdmin() {
       paciente_id: form.paciente_id ? Number(form.paciente_id) : null,
       paciente_nombre: form.paciente_nombre.trim(),
       numero_expediente_clinico: form.numero_expediente_clinico || null,
+      sexo: form.sexo,
+      edad: form.edad ? Number(form.edad) : null,
+      fecha_nacimiento: form.fecha_nacimiento || null,
       medico_id: null,
       medico_nombre: null,
       fecha_cita: buildFechaCitaISO(),
@@ -238,6 +244,35 @@ function CitasAdmin() {
                 readOnly
                 className="sql-input admin-field"
               />
+            </div>
+
+            <div className="admin-grid-2">
+              <select
+                value={form.sexo}
+                onChange={(e) => onFieldChange('sexo', e.target.value)}
+                className="sql-input admin-field"
+              >
+                <option value="Femenino">Femenino</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Otro">Otro</option>
+              </select>
+
+              <div className="admin-grid-2" style={{ gap: '8px' }}>
+                <input
+                  type="date"
+                  placeholder="Nacimiento"
+                  value={form.fecha_nacimiento}
+                  onChange={(e) => onFieldChange('fecha_nacimiento', e.target.value)}
+                  className="sql-input admin-field"
+                />
+                <input
+                  type="number"
+                  placeholder="Edad"
+                  value={form.edad}
+                  onChange={(e) => onFieldChange('edad', e.target.value)}
+                  className="sql-input admin-field"
+                />
+              </div>
             </div>
 
             <div className="admin-grid-2">

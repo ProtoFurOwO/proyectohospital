@@ -71,6 +71,9 @@ class CitaCreate(BaseModel):
     medico_id: Optional[int] = None
     medico_nombre: Optional[str] = None
     fecha_cita: datetime
+    sexo: Optional[str] = None
+    edad: Optional[int] = None
+    fecha_nacimiento: Optional[str] = None
     tipo_cirugia: Optional[str] = None
     turno: Optional[str] = None
     division_quirurgica: Optional[str] = None
@@ -249,6 +252,9 @@ async def get_citas(
             "paciente_id": data["id"],
             "paciente_nombre": paciente_nombre,
             "numero_expediente_clinico": numero_expediente,
+            "sexo": data.get("sexo"),
+            "edad": data.get("edad"),
+            "fecha_nacimiento": data.get("fecha_nacimiento"),
             "medico_id": None,
             "medico_nombre": "Por asignar",
             "quirofano_id": None,
@@ -286,6 +292,9 @@ async def get_cita(cita_id: int):
                 "paciente_id": data["id"],
                 "paciente_nombre": paciente_nombre,
                 "numero_expediente_clinico": numero_expediente,
+                "sexo": data.get("sexo"),
+                "edad": data.get("edad"),
+                "fecha_nacimiento": data.get("fecha_nacimiento"),
                 "medico_id": None,
                 "medico_nombre": "Por asignar",
                 "quirofano_id": None,
@@ -366,16 +375,22 @@ async def programar_cita(cita: CitaCreate):
                     complejidad, 
                     urgencia, 
                     paciente_nombre, 
-                    numero_expediente_clinico
+                    numero_expediente_clinico,
+                    sexo,
+                    edad,
+                    fecha_nacimiento
                 ) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 cita.fecha_cita.isoformat(), 
                 tipo_cirugia, 
                 complejidad_evento or 'N/A', 
                 urgencia_intervencion or 'N/A',
                 cita.paciente_nombre,
-                numero_expediente
+                numero_expediente,
+                cita.sexo,
+                cita.edad,
+                cita.fecha_nacimiento
             ))
             new_id = cur.lastrowid
             await conn.commit()
