@@ -175,13 +175,42 @@ certbot renew --dry-run
 
 ---
 
-## Paso 5: Firewall (si hay problemas de conexión VPC)
+## Paso 5: Blindaje de Red (Aislar el Backend)
+
+> [!CAUTION]
+> **ESTE PASO ES CRÍTICO:** Aquí es donde aseguramos que nadie pueda entrar al backend excepto tú (SSH) y el Frontend (VPC).
+
+### En backend-2 (64.176.198.18):
 
 ```bash
-# En backend-2:
-ufw allow from 10.0.1.0/24
-ufw allow from 10.1.1.0/24
+# 1. Por defecto, denegar toda entrada
+ufw default deny incoming
+ufw default allow outgoing
+
+# 2. Permitir SSH (¡IMPORTANTE para no quedarte fuera!)
+ufw allow ssh
+
+# 3. Permitir TODO el tráfico desde la red privada VPC (Frontend)
+# Ajusta el rango si tu VPC es diferente, pero 10.0.0.0/8 cubre todo lo privado de Vultr
+ufw allow from 10.0.0.0/8
+
+# 4. Habilitar firewall
+ufw enable
 ```
+
+**Resultado:** Si alguien intenta entrar a `64.176.198.18:8001` desde su casa, el servidor ni siquiera le responderá. Pero si el Frontend (`10.0.1.6`) le pide algo a la `10.0.1.5:8001`, pasará sin problemas.
+
+---
+
+## Paso 6: Verificación Final de Aislamiento
+
+1.  **Desde tu PC (público):**
+    *   Prueba: `curl http://64.176.198.18:8001/health`
+    *   Debe: **Quedarse cargando o dar Timeout** (No debe responder).
+2.  **Desde el Frontend VPS:**
+    *   Prueba: `curl http://10.0.1.5:8001/health`
+    *   Debe: **Responder `{"status":"ok", ...}`** instantáneamente.
+
 
 ---
 

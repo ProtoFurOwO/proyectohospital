@@ -33,6 +33,8 @@ source "$ROOT_DIR/.venv/bin/activate"
 PIDS=()
 
 # ── 2. Microservicios Python ──
+# Escuchan en 0.0.0.0 para recibir tráfico de la VPC (Nginx) 
+# pero el firewall (UFW) bloqueará el acceso externo público.
 echo "[8001] Iniciando Citas (Python/FastAPI)..."
 python3 -m uvicorn services.citas.main:app \
   --host 0.0.0.0 --port 8001 \
@@ -59,12 +61,14 @@ sleep 1
 
 # ── 3. Microservicios Go (binarios pre-compilados) ──
 echo "[8003] Iniciando Quirófanos (Go)..."
+export BIND_ADDR="0.0.0.0:8003"
 "$ROOT_DIR/bin/quirofanos" >> "$LOG_DIR/quirofanos.log" 2>&1 &
 PIDS+=($!)
 
 sleep 1
 
 echo "[8006] Iniciando Compilador + LogAnalyzer (Go)..."
+export BIND_ADDR="0.0.0.0:8006"
 "$ROOT_DIR/bin/compiler" >> "$LOG_DIR/compiler.log" 2>&1 &
 PIDS+=($!)
 
