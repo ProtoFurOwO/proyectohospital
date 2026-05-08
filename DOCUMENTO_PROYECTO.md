@@ -155,12 +155,12 @@ La comunicación entre el cliente y el servidor se encuentra cifrada mediante **
 | Aspecto | Detalle |
 |---|---|
 | Autoridad Certificadora | Let's Encrypt (ISRG) |
-| Herramienta de emisión | win-acme (ACME v2 para Windows) |
+| Herramienta de emisión | Certbot (ACME protocol) en Linux |
 | Protocolos habilitados | TLS 1.2, TLS 1.3 |
 | Cifrados | HIGH:!aNULL:!MD5 |
-| Renovación automática | Tarea programada cada 60 días |
+| Renovación automática | Cron job configurado por Certbot cada 60 días |
 | Dominio protegido | `hospital.stolsimprojects.tech` |
-| Redirección HTTP→HTTPS | Automática (código 301) |
+| Redirección HTTP→HTTPS | Automática (código 301 configurado en Nginx) |
 
 > **[IMAGEN: Captura del candado verde en el navegador mostrando el certificado SSL]**
 > *Figura 6. Certificado SSL/TLS válido emitido por Let's Encrypt para el dominio del sistema*
@@ -179,8 +179,8 @@ La interfaz web fue construida con **React 18** y empaquetada con **Vite** para 
 |---|---|---|
 | **Ver Horarios** | Gestión visual de turnos (mañana/tarde/noche), slots disponibles y médicos asignados | Público |
 | **Portal Doctores** | Perfil del médico, historial de cirugías, solicitud de turnos | Público |
-| **Citas** | Programación, búsqueda y cancelación de citas quirúrgicas con filtros por fecha/estado. Captura de datos demográficos (edad, sexo). | Público |
-| **Expedientes** | Alta de pacientes, validación pre-operatoria, asignación de quirófano, cirujano y generación de **Reportes PDF**. | Público |
+| **Citas** | Programación, búsqueda y cancelación de citas quirúrgicas con registro completo de datos del paciente (edad, sexo, nacimiento). | Público |
+| **Expedientes** | Alta de pacientes, validación pre-operatoria, asignación de quirófano y cirujano. Incluye generación de **Reportes Médicos en PDF** con formato clínico hospitalario. | Público |
 | **Dashboard** | Panel de control de quirófanos en tiempo real (30 salas) con estados y bloques horarios | Admin |
 | **Asignación Médicos** | Vista por fecha de la disponibilidad de todos los doctores y sus turnos | Admin |
 | **Admin Médicos** | CRUD completo de personal médico (alta, baja, edición de especialidad y turno) | Admin |
@@ -232,34 +232,21 @@ La meta tag `<meta name="viewport" content="width=device-width, initial-scale=1.
 > **[IMAGEN: Otra captura en modo tablet (iPad)]**
 > *Figura 12. Vista responsiva del sistema desde una tablet*
 
-### 7.3 Generación de Reportes Clínicos (PDF)
-
-El sistema incorpora un motor de generación de documentos PDF en el lado del cliente (Frontend) utilizando la biblioteca `jspdf`. Esta funcionalidad permite exportar la historia clínica del paciente con un formato profesional y estandarizado, adecuado para su impresión y almacenamiento físico si es requerido.
-
-**Características del PDF:**
-- **Encabezado Institucional:** Contiene información clínica base y fecha/hora exacta de generación.
-- **Datos Sincronizados:** Hereda automáticamente los datos demográficos (Edad, Sexo, Fecha de Nacimiento) capturados desde el módulo de Citas.
-- **Semáforo Quirúrgico:** Calcula y muestra de forma visual (Verde/Amarillo/Rojo) la aptitud del paciente basándose en el estado de sus estudios preoperatorios (Laboratorio, Cardiograma, Imagenología).
-- **Firmas:** Espacio dedicado para la firma legal del médico responsable y del paciente, calculado dinámicamente para asegurar que encaje en la hoja sin desbordamientos.
-
-> **[IMAGEN: Captura del documento PDF generado abierto en el navegador o visor de PDF]**
-> *Figura 13. Reporte de expediente clínico exportado en formato PDF*
-
 ---
 
 ## 8. Estrategia de Despliegue (Cloud)
 
 ### 8.1 Infraestructura en la Nube (Vultr Cloud)
 
-El sistema se despliega sobre **Vultr Cloud Compute** utilizando dos servidores Windows Server 2022 conectados mediante una **Virtual Private Cloud (VPC)** para comunicación segura:
+El sistema se despliega sobre **Vultr Cloud Compute** utilizando dos servidores **Ubuntu 24.04 LTS** conectados mediante una **Virtual Private Cloud (VPC)** para comunicación segura:
 
 | Servidor | IP Pública | IP Privada (VPC) | Rol | Especificaciones |
 |---|---|---|---|---|
-| **Backend** | — (sin acceso directo) | 10.0.1.3 | Microservicios + Bases de datos | Windows Server 2022, 2 vCPU, 4 GB RAM |
-| **Frontend** | 45.63.21.244 | 10.0.1.4 | Nginx + React SPA + SSL | Windows Server 2022, 1 vCPU, 2 GB RAM |
+| **Backend** | — (sin acceso directo) | 10.0.1.3 | Microservicios + Bases de datos en Docker | Ubuntu 24.04 LTS, 2 vCPU, 4 GB RAM |
+| **Frontend** | 45.63.21.244 | 10.0.1.4 | Nginx + React SPA + Certbot SSL | Ubuntu 24.04 LTS, 1 vCPU, 2 GB RAM |
 
-> **[IMAGEN: Diagrama de la arquitectura de red VPC con los dos servidores]**
-> *Figura 14. Topología de red VPC en Vultr Cloud*
+> **[IMAGEN: Diagrama de la arquitectura de red VPC con los dos servidores Ubuntu]**
+> *Figura 13. Topología de red VPC en Vultr Cloud*
 
 ### 8.2 Frontend con Nginx (Proxy Inverso + Servidor Web)
 
@@ -280,22 +267,23 @@ El servidor Frontend ejecuta **Nginx** con doble función:
 | `/compiler/*` | `10.0.1.3:8006` | UI del Motor SQL |
 | `/api/login` | `10.0.1.3:8006` | Autenticación JWT |
 
-### 8.3 Backend Nativo en Windows Server
+### 8.3 Backend Nativo en Ubuntu Linux
 
-Los cinco microservicios y las cinco bases de datos se ejecutan como procesos nativos en Windows Server (sin contenedores Docker), lo cual simplifica la administración y reduce el consumo de recursos:
+Los cinco microservicios y las bases de datos se ejecutan de manera robusta en un entorno Linux (Ubuntu 24.04). Las bases de datos se orquestan mediante **Docker Compose**, mientras que los microservicios se ejecutan nativamente apoyándose en scripts shell para automatización:
 
-**Bases de datos instaladas nativamente:**
+**Bases de datos contenedorizadas (Docker):**
 - MySQL 8.0 (puerto 3306)
 - PostgreSQL 17 (puerto 5432)
 - MariaDB 11 (puerto 3307)
 - Redis 7 (puerto 6379)
 
-**Microservicios ejecutados mediante script PowerShell** (`start-backend.ps1`):
-- 3 servicios Python se levantan con `uvicorn`
-- 2 servicios Go se compilan y ejecutan con `go run`
+**Microservicios ejecutados mediante scripts de bash (`start-backend.sh`):**
+- 3 servicios Python (Citas, Expedientes, Personal) con `uvicorn`.
+- 2 servicios Go (Quirófanos, Motor SQL) gestionados por módulos de Go.
+- Todo ejecutado en un entorno virtual (`.venv`) para un control estricto de dependencias en Linux.
 
 > **[IMAGEN: Captura del panel de Vultr mostrando los dos servidores]**
-> *Figura 15. Servidores desplegados en Vultr Cloud Compute*
+> *Figura 14. Servidores desplegados en Vultr Cloud Compute*
 
 ---
 
@@ -317,7 +305,7 @@ Los cinco microservicios y las cinco bases de datos se ejecutan como procesos na
 6. El **Log Analyzer** registra cada operación para auditoría y trazabilidad.
 
 > **[IMAGEN: Diagrama de caso de uso UML con los actores y casos]**
-> *Figura 16. Diagrama de caso de uso — Programación de cirugía*
+> *Figura 15. Diagrama de caso de uso — Programación de cirugía*
 
 ### 9.2 Ciclo de Vida del Desarrollo (Metodología Ágil)
 
@@ -338,7 +326,7 @@ El proyecto siguió una metodología **ágil iterativa** con sprints semanales:
 | GitHub | Control de versiones, ramas (`main`, `vpstry1`), pull requests |
 | Git | Versionamiento local y remoto |
 | VS Code | IDE principal de desarrollo |
-| PowerShell | Automatización de despliegue y scripts de arranque |
+| Bash / Shell Scripting | Automatización de despliegue, scripts de inicialización y migración (ej. reseteo seguro de IDs y prevención de desincronización) |
 
 ---
 
@@ -356,7 +344,7 @@ El proyecto siguió una metodología **ágil iterativa** con sprints semanales:
 | Sem 11 | SSL/TLS, seguridad JWT, hardening, documentación final | Seguridad + Docs |
 
 > **[IMAGEN: Diagrama de Gantt con las semanas y actividades — se puede hacer en draw.io, Excel o directamente en LaTeX con pgfgantt]**
-> *Figura 17. Cronograma de actividades (Diagrama de Gantt)*
+> *Figura 16. Cronograma de actividades (Diagrama de Gantt)*
 
 ---
 
@@ -375,21 +363,21 @@ El proyecto siguió una metodología **ágil iterativa** con sprints semanales:
 ### 11.2 Evidencias del Sistema Funcionando
 
 > **[IMAGEN: Captura del repositorio en GitHub mostrando los commits]**
-> *Figura 18. Historial de commits en el repositorio de GitHub*
+> *Figura 17. Historial de commits en el repositorio de GitHub*
 
 > **[IMAGEN: Captura de la terminal del backend con los 5 servicios corriendo]**
-> *Figura 19. Los cinco microservicios ejecutándose en el servidor Backend*
+> *Figura 18. Los cinco microservicios ejecutándose en el servidor Backend*
 
 > **[IMAGEN: Captura de la terminal mostrando healthcheck exitoso]**
-> *Figura 20. Verificación de salud (healthcheck) de todos los servicios*
+> *Figura 19. Verificación de salud (healthcheck) de todos los servicios*
 
 > **[IMAGEN: Captura de la consola del navegador mostrando peticiones HTTPS exitosas]**
-> *Figura 21. Red de peticiones HTTPS cifradas en el navegador*
+> *Figura 20. Red de peticiones HTTPS cifradas en el navegador*
 
 ### 11.3 Evidencia de Trabajo en Equipo
 
 > **[IMAGEN: Capturas de conversaciones del equipo / reuniones / división de tareas]**
-> *Figura 22. Evidencia de coordinación del equipo de desarrollo*
+> *Figura 21. Evidencia de coordinación del equipo de desarrollo*
 
 ---
 
@@ -430,13 +418,12 @@ A continuación se lista cada figura que debe ser capturada e insertada:
 | 10 | Motor SQL | `/compiler/` ejecutando `SELECT * FROM citas;` | Screenshot |
 | 11 | Vista móvil | Chrome DevTools → modo responsive → iPhone 14 Pro | Screenshot |
 | 12 | Vista tablet | Chrome DevTools → modo responsive → iPad Air | Screenshot |
-| 13 | Reporte PDF | Documento PDF generado desde la pestaña Expedientes | Screenshot |
-| 14 | Red VPC | Diagrama: Frontend (45.63.21.244) ↔ VPC ↔ Backend (10.0.1.3) | Diagrama |
-| 15 | Panel Vultr | Dashboard de Vultr mostrando los 2 servidores | Screenshot |
-| 16 | Caso de uso | Diagrama UML de caso de uso con actor "Administrador" | Diagrama |
-| 17 | Gantt | Cronograma de 11 semanas con barras de actividad | Diagrama |
-| 18 | GitHub | Página del repo mostrando commits recientes | Screenshot |
-| 19 | Backend terminal | Terminal PowerShell con los 5 servicios "[OK]" | Screenshot |
-| 20 | Healthcheck | Salida de `healthcheck.ps1` con todo verde | Screenshot |
-| 21 | Network tab | Chrome DevTools → Network con peticiones HTTPS 200 OK | Screenshot |
-| 22 | Equipo | Evidencia de chat/reunión del equipo | Screenshot |
+| 13 | Red VPC | Diagrama: Frontend (45.63.21.244) ↔ VPC ↔ Backend (10.0.1.3) | Diagrama |
+| 14 | Panel Vultr | Dashboard de Vultr mostrando los 2 servidores | Screenshot |
+| 15 | Caso de uso | Diagrama UML de caso de uso con actor "Administrador" | Diagrama |
+| 16 | Gantt | Cronograma de 11 semanas con barras de actividad | Diagrama |
+| 17 | GitHub | Página del repo mostrando commits recientes | Screenshot |
+| 18 | Backend terminal | Terminal Bash con los 5 servicios ejecutándose | Screenshot |
+| 19 | Docker DBs | Salida de `docker ps` o de scripts de verificación mostrando bases de datos up | Screenshot |
+| 20 | Network tab | Chrome DevTools → Network con peticiones HTTPS 200 OK | Screenshot |
+| 21 | Equipo | Evidencia de chat/reunión del equipo | Screenshot |
