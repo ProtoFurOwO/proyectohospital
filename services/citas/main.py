@@ -455,6 +455,23 @@ async def cancelar_cita(cita_id: int):
     emit_log_bg("WARN", "CITAS", "DELETE", "PACIENTE", f"cita_{cita_id}")
     return {"success": True, "message": "Cita cancelada"}
 
+@app.delete("/citas/{cita_id}")
+async def eliminar_cita(cita_id: int):
+    """Elimina una cita de la base de datos (Método RESTful)"""
+    pool = await get_pool()
+    if not pool:
+        raise HTTPException(status_code=500, detail="Database not connected")
+        
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            affected = await cur.execute("DELETE FROM citas_legacy WHERE id=%s", (cita_id,))
+            await conn.commit()
+            if affected == 0:
+                raise HTTPException(status_code=404, detail="Cita no encontrada")
+                
+    emit_log_bg("WARN", "CITAS", "DELETE", "PACIENTE", f"cita_eliminada_{cita_id}")
+    return {"success": True, "message": "Cita eliminada"}
+
 @app.post("/citas/{cita_id}/reprogramar")
 async def reprogramar_cita(cita_id: int, nueva_fecha: datetime):
     """Reprograma una cita"""
