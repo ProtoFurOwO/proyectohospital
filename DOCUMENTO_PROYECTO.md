@@ -155,12 +155,12 @@ La comunicación entre el cliente y el servidor se encuentra cifrada mediante **
 | Aspecto | Detalle |
 |---|---|
 | Autoridad Certificadora | Let's Encrypt (ISRG) |
-| Herramienta de emisión | Certbot (ACME protocol) en Linux |
+| Herramienta de emisión | Certbot (EFF) |
 | Protocolos habilitados | TLS 1.2, TLS 1.3 |
 | Cifrados | HIGH:!aNULL:!MD5 |
-| Renovación automática | Cron job configurado por Certbot cada 60 días |
+| Renovación automática | Tarea programada en cron (cada 60 días) |
 | Dominio protegido | `hospital.stolsimprojects.tech` |
-| Redirección HTTP→HTTPS | Automática (código 301 configurado en Nginx) |
+| Redirección HTTP→HTTPS | Automática administrada por Nginx |
 
 > **[IMAGEN: Captura del candado verde en el navegador mostrando el certificado SSL]**
 > *Figura 6. Certificado SSL/TLS válido emitido por Let's Encrypt para el dominio del sistema*
@@ -179,8 +179,8 @@ La interfaz web fue construida con **React 18** y empaquetada con **Vite** para 
 |---|---|---|
 | **Ver Horarios** | Gestión visual de turnos (mañana/tarde/noche), slots disponibles y médicos asignados | Público |
 | **Portal Doctores** | Perfil del médico, historial de cirugías, solicitud de turnos | Público |
-| **Citas** | Programación, búsqueda y cancelación de citas quirúrgicas con registro completo de datos del paciente (edad, sexo, nacimiento). | Público |
-| **Expedientes** | Alta de pacientes, validación pre-operatoria, asignación de quirófano y cirujano. Incluye generación de **Reportes Médicos en PDF** con formato clínico hospitalario. | Público |
+| **Citas** | Programación, búsqueda y cancelación de citas quirúrgicas con filtros por fecha/estado | Público |
+| **Expedientes** | Alta de pacientes, validación pre-operatoria, asignación de quirófano, cirujano y **exportación a PDF** | Público |
 | **Dashboard** | Panel de control de quirófanos en tiempo real (30 salas) con estados y bloques horarios | Admin |
 | **Asignación Médicos** | Vista por fecha de la disponibilidad de todos los doctores y sus turnos | Admin |
 | **Admin Médicos** | CRUD completo de personal médico (alta, baja, edición de especialidad y turno) | Admin |
@@ -238,49 +238,51 @@ La meta tag `<meta name="viewport" content="width=device-width, initial-scale=1.
 
 ### 8.1 Infraestructura en la Nube (Vultr Cloud)
 
-El sistema se despliega sobre **Vultr Cloud Compute** utilizando dos servidores **Ubuntu 24.04 LTS** conectados mediante una **Virtual Private Cloud (VPC)** para comunicación segura:
+El sistema se despliega sobre **Vultr Cloud Compute** utilizando dos servidores Ubuntu Linux conectados mediante una **Virtual Private Cloud (VPC)** para comunicación segura:
 
 | Servidor | IP Pública | IP Privada (VPC) | Rol | Especificaciones |
 |---|---|---|---|---|
-| **Backend** | — (sin acceso directo) | 10.0.1.3 | Microservicios + Bases de datos en Docker | Ubuntu 24.04 LTS, 2 vCPU, 4 GB RAM |
-| **Frontend** | 45.63.21.244 | 10.0.1.4 | Nginx + React SPA + Certbot SSL | Ubuntu 24.04 LTS, 1 vCPU, 2 GB RAM |
+| **Backend** | 64.176.198.18 | 10.0.1.5 | Microservicios + Bases de datos | Ubuntu Linux, 2 vCPU, 4 GB RAM |
+| **Frontend** | 149.28.46.114 | 10.0.1.6 | Nginx + React SPA + SSL | Ubuntu Linux, 1 vCPU, 2 GB RAM |
 
-> **[IMAGEN: Diagrama de la arquitectura de red VPC con los dos servidores Ubuntu]**
+> **[IMAGEN: Diagrama de la arquitectura de red VPC con los dos servidores]**
 > *Figura 13. Topología de red VPC en Vultr Cloud*
 
 ### 8.2 Frontend con Nginx (Proxy Inverso + Servidor Web)
 
-El servidor Frontend ejecuta **Nginx** con doble función:
+El servidor Frontend ejecuta **Nginx** en Ubuntu con doble función:
 
-1. **Servidor de archivos estáticos:** Sirve el build de producción de React (HTML, CSS, JS) desde `C:\nginx\html`.
+1. **Servidor de archivos estáticos:** Sirve el build de producción de React (HTML, CSS, JS) desde `/var/www/hospital/`.
 2. **API Gateway (Proxy Inverso):** Redirige las peticiones `/api/v1/*` al servidor Backend a través de la red privada VPC.
 
 **Tabla de rutas del API Gateway:**
 
 | Ruta Pública | Upstream (VPC) | Microservicio |
 |---|---|---|
-| `/api/v1/citas/*` | `10.0.1.3:8001` | Citas Médicas |
-| `/api/v1/expedientes/*` | `10.0.1.3:8002` | Expedientes Clínicos |
-| `/api/v1/quirofanos/*` | `10.0.1.3:8003` | Quirófanos |
-| `/api/v1/personal/*` | `10.0.1.3:8005` | Personal Médico |
-| `/api/v1/compiler/*` | `10.0.1.3:8006` | Motor SQL |
-| `/compiler/*` | `10.0.1.3:8006` | UI del Motor SQL |
-| `/api/login` | `10.0.1.3:8006` | Autenticación JWT |
+| `/api/v1/citas/*` | `10.0.1.5:8001` | Citas Médicas |
+| `/api/v1/expedientes/*` | `10.0.1.5:8002` | Expedientes Clínicos |
+| `/api/v1/quirofanos/*` | `10.0.1.5:8003` | Quirófanos |
+| `/api/v1/personal/*` | `10.0.1.5:8005` | Personal Médico |
+| `/api/v1/compiler/*` | `10.0.1.5:8006` | Motor SQL |
+| `/compiler/*` | `10.0.1.5:8006` | UI del Motor SQL |
+| `/api/login` | `10.0.1.5:8006` | Autenticación JWT |
 
 ### 8.3 Backend Nativo en Ubuntu Linux
 
-Los cinco microservicios y las bases de datos se ejecutan de manera robusta en un entorno Linux (Ubuntu 24.04). Las bases de datos se orquestan mediante **Docker Compose**, mientras que los microservicios se ejecutan nativamente apoyándose en scripts shell para automatización:
+Los cinco microservicios se ejecutan como procesos nativos en Ubuntu, mientras que las cinco bases de datos operan mediante contenedores Docker para garantizar consistencia:
 
-**Bases de datos contenedorizadas (Docker):**
+**Bases de datos instaladas vía Docker Compose:**
 - MySQL 8.0 (puerto 3306)
-- PostgreSQL 17 (puerto 5432)
-- MariaDB 11 (puerto 3307)
+- PostgreSQL 15 (puerto 5432)
+- MariaDB 10 (puerto 3307)
 - Redis 7 (puerto 6379)
 
-**Microservicios ejecutados mediante scripts de bash (`start-backend.sh`):**
-- 3 servicios Python (Citas, Expedientes, Personal) con `uvicorn`.
-- 2 servicios Go (Quirófanos, Motor SQL) gestionados por módulos de Go.
-- Todo ejecutado en un entorno virtual (`.venv`) para un control estricto de dependencias en Linux.
+**Microservicios ejecutados mediante scripts Bash** (`start-backend.sh` con `nohup`):
+- 3 servicios Python se levantan con `uvicorn` dentro de un entorno virtual (`.venv`).
+- 2 servicios Go se compilan en binarios nativos ELF de Linux y se ejecutan en background.
+
+**Seguridad Perimetral (UFW):**
+Para garantizar la seguridad del clúster, el servidor Backend emplea **UFW (Uncomplicated Firewall)** para bloquear todo el tráfico externo (Internet), permitiendo acceso exclusivamente a las peticiones originadas desde el Frontend mediante la red VPC (`10.0.0.0/8`) y a través del puerto SSH para administración.
 
 > **[IMAGEN: Captura del panel de Vultr mostrando los dos servidores]**
 > *Figura 14. Servidores desplegados en Vultr Cloud Compute*
@@ -326,7 +328,7 @@ El proyecto siguió una metodología **ágil iterativa** con sprints semanales:
 | GitHub | Control de versiones, ramas (`main`, `vpstry1`), pull requests |
 | Git | Versionamiento local y remoto |
 | VS Code | IDE principal de desarrollo |
-| Bash / Shell Scripting | Automatización de despliegue, scripts de inicialización y migración (ej. reseteo seguro de IDs y prevención de desincronización) |
+| Bash / Shell | Automatización de despliegue y scripts de arranque en Linux |
 
 ---
 
@@ -423,7 +425,7 @@ A continuación se lista cada figura que debe ser capturada e insertada:
 | 15 | Caso de uso | Diagrama UML de caso de uso con actor "Administrador" | Diagrama |
 | 16 | Gantt | Cronograma de 11 semanas con barras de actividad | Diagrama |
 | 17 | GitHub | Página del repo mostrando commits recientes | Screenshot |
-| 18 | Backend terminal | Terminal Bash con los 5 servicios ejecutándose | Screenshot |
-| 19 | Docker DBs | Salida de `docker ps` o de scripts de verificación mostrando bases de datos up | Screenshot |
+| 18 | Backend terminal | Terminal PowerShell con los 5 servicios "[OK]" | Screenshot |
+| 19 | Healthcheck | Salida de `healthcheck.ps1` con todo verde | Screenshot |
 | 20 | Network tab | Chrome DevTools → Network con peticiones HTTPS 200 OK | Screenshot |
 | 21 | Equipo | Evidencia de chat/reunión del equipo | Screenshot |
