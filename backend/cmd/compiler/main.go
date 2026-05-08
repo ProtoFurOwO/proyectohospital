@@ -72,8 +72,14 @@ func main() {
 	mux.HandleFunc("/sql/tokenize", cors(jwtMiddleware(sqlSvc.handleSQLTokenize)))
 	mux.HandleFunc("/sql/logs", cors(jwtMiddleware(sqlSvc.handleSQLLogs)))
 
-	// ── Nuevos endpoints: Visor de Logs (protegidos con JWT) ──
-	mux.HandleFunc("/logs", cors(jwtMiddleware(handleLogs)))
+	// ── Nuevos endpoints: Visor de Logs (GET/DELETE protegidos con JWT, POST interno) ──
+	mux.HandleFunc("/logs", cors(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handleLogs(w, r)
+			return
+		}
+		jwtMiddleware(handleLogs)(w, r)
+	}))
 
 	// ── Health ──
 	mux.HandleFunc("/health", cors(func(w http.ResponseWriter, r *http.Request) {
